@@ -73,11 +73,11 @@ export const UpdateCard = ({ update, onClick }: UpdateCardProps) => {
 
   return (
     <Card
-      className="w-72 sm:w-80 flex-shrink-0 overflow-hidden border-0 shadow-sm bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all duration-normal cursor-pointer"
+      className="w-64 sm:w-72 md:w-80 flex-shrink-0 overflow-hidden border-0 shadow-sm bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all duration-normal cursor-pointer"
       onClick={onClick}
       data-testid={`card-update-${update.type}`}
     >
-      <div className="relative h-32 overflow-hidden bg-gradient-to-br from-accent/20 to-accent/5">
+      <div className="relative h-28 sm:h-32 overflow-hidden bg-gradient-to-br from-accent/20 to-accent/5">
         <div className="absolute inset-0 flex items-center justify-center">
           {getTypeIcon(update.type)}
         </div>
@@ -93,7 +93,7 @@ export const UpdateCard = ({ update, onClick }: UpdateCardProps) => {
         </div>
       </div>
 
-      <div className="p-4 space-y-3">
+      <div className="p-3 sm:p-4 space-y-2 sm:space-y-3">
         <div>
           <h3 className="font-display font-semibold text-sm text-foreground leading-tight" data-testid="text-update-title">
             {update.title}
@@ -107,11 +107,11 @@ export const UpdateCard = ({ update, onClick }: UpdateCardProps) => {
         )}
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span className="font-body" data-testid="text-update-time">
+          <span className="font-body truncate flex-1" data-testid="text-update-time">
             {formatTimestamp(update.timestamp)}
           </span>
           {update.source && (
-            <span className="font-body text-xs truncate max-w-[120px]">
+            <span className="font-body text-xs truncate max-w-[80px] sm:max-w-[120px] ml-2">
               {update.source}
             </span>
           )}

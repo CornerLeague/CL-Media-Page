@@ -27,9 +27,9 @@ export const FanExperiencesSection = ({ experiences, isLoading, error }: FanExpe
   }
 
   return (
-    <section className="w-full mt-6 sm:mt-8" data-testid="section-fan-experiences">
-      <div className="px-4 sm:px-6 md:px-8 lg:px-12">
-        <div className="flex items-center gap-2 mb-4">
+    <section className="w-full mt-4 sm:mt-6 md:mt-8 pb-4 sm:pb-6" data-testid="section-fan-experiences">
+      <div className="px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12">
+        <div className="flex items-center gap-2 mb-3 sm:mb-4">
           <Star className="w-5 h-5 text-muted-foreground" />
           <h2 className="font-display font-semibold text-base text-foreground">
             Fan Experiences
@@ -40,9 +40,9 @@ export const FanExperiencesSection = ({ experiences, isLoading, error }: FanExpe
       {/* Loading State */}
       {isLoading && (
         <div className="overflow-x-auto scrollbar-hide">
-          <div className="flex gap-3 sm:gap-4 px-4 sm:px-6 md:px-8 lg:px-12 pb-4">
+          <div className="flex gap-2 sm:gap-3 md:gap-4 px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 pb-3 sm:pb-4">
             {Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="w-72 sm:w-80 flex-shrink-0">
+              <div key={index} className="w-64 sm:w-72 md:w-80 flex-shrink-0">
                 <Skeleton className="h-48 w-full rounded-lg" />
               </div>
             ))}
@@ -53,7 +53,7 @@ export const FanExperiencesSection = ({ experiences, isLoading, error }: FanExpe
       {/* Fan Experiences */}
       {!isLoading && !error && (
         <div className="overflow-x-auto scrollbar-hide">
-          <div className="flex gap-3 sm:gap-4 px-4 sm:px-6 md:px-8 lg:px-12 pb-4">
+          <div className="flex gap-2 sm:gap-3 md:gap-4 px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 pb-3 sm:pb-4">
             {experiences && experiences.length > 0 ? (
               experiences.map((experience, index) => (
                 <ExperienceCard
@@ -63,7 +63,7 @@ export const FanExperiencesSection = ({ experiences, isLoading, error }: FanExpe
                 />
               ))
             ) : (
-              <div className="w-72 sm:w-80 flex-shrink-0 bg-card rounded-lg border border-border/20 p-4 text-center">
+              <div className="w-64 sm:w-72 md:w-80 flex-shrink-0 bg-card rounded-lg border border-border/20 p-4 text-center">
                 <Star className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">
                   No fan experiences available

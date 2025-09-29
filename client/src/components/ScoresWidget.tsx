@@ -71,31 +71,31 @@ export const ScoresWidget = ({ latestScore, recentResults, teamName }: ScoresWid
     <div className="space-y-4" data-testid="scores-widget">
       {/* Latest Score */}
       {latestScore && (
-        <div className="bg-card/50 rounded-lg p-4 border border-border/20">
-          <div className="flex items-center justify-between mb-2">
+        <div className="bg-card/50 rounded-lg p-3 sm:p-4 border border-border/20">
+          <div className="flex items-center justify-between mb-3">
             <h3 className="font-display font-semibold text-sm text-foreground">Latest Game</h3>
             <Badge variant="outline" className="text-xs" data-testid="status-badge">
               {getStatusDisplay(latestScore.status, latestScore.period, latestScore.timeRemaining)}
             </Badge>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="font-display font-medium text-foreground text-sm">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-0">
+            <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+              <span className="font-display font-medium text-foreground text-xs sm:text-sm truncate max-w-[100px] sm:max-w-none">
                 {latestScore.away.name || latestScore.away.id}
               </span>
-              <span className="font-display font-bold text-foreground text-lg" data-testid="away-score">
+              <span className="font-display font-bold text-foreground text-base sm:text-lg" data-testid="away-score">
                 {latestScore.away.pts}
               </span>
             </div>
 
-            <div className="text-xs text-muted-foreground">vs</div>
+            <div className="text-xs text-muted-foreground px-2">vs</div>
 
-            <div className="flex items-center gap-3">
-              <span className="font-display font-bold text-foreground text-lg" data-testid="home-score">
+            <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end sm:justify-start">
+              <span className="font-display font-bold text-foreground text-base sm:text-lg" data-testid="home-score">
                 {latestScore.home.pts}
               </span>
-              <span className="font-display font-medium text-foreground text-sm">
+              <span className="font-display font-medium text-foreground text-xs sm:text-sm truncate max-w-[100px] sm:max-w-none">
                 {latestScore.home.name || latestScore.home.id}
               </span>
             </div>
@@ -105,27 +105,27 @@ export const ScoresWidget = ({ latestScore, recentResults, teamName }: ScoresWid
 
       {/* Recent Results */}
       {recentResults.length > 0 && (
-        <div className="bg-card/50 rounded-lg p-4 border border-border/20">
+        <div className="bg-card/50 rounded-lg p-3 sm:p-4 border border-border/20">
           <h3 className="font-display font-semibold text-sm text-foreground mb-3">Recent Results</h3>
 
           <div className="space-y-2">
             {recentResults.slice(0, 5).map((result) => (
-              <div key={result.gameId} className="flex items-center justify-between" data-testid={`result-${result.gameId}`}>
-                <div className="flex items-center gap-2">
+              <div key={result.gameId} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 sm:gap-2" data-testid={`result-${result.gameId}`}>
+                <div className="flex items-center gap-2 flex-wrap">
                   {getResultIcon(result.result)}
                   <Badge variant="outline" className={`text-xs ${getResultColor(result.result)}`}>
                     {result.result}
                   </Badge>
                   {result.opponent && (
-                    <span className="text-xs text-muted-foreground">vs {result.opponent}</span>
+                    <span className="text-xs text-muted-foreground truncate max-w-[120px] sm:max-w-none">vs {result.opponent}</span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">
                     {result.diff > 0 ? `+${result.diff}` : result.diff}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-muted-foreground">
                     {new Date(result.date).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric'

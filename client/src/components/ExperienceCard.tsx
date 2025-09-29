@@ -43,8 +43,6 @@ export const ExperienceCard = ({ experience, onClick }: ExperienceCardProps) => 
         return 'Viewing';
       case 'meetup':
         return 'Meetup';
-      default:
-        return type.charAt(0).toUpperCase() + type.slice(1);
     }
   };
 
@@ -82,11 +80,11 @@ export const ExperienceCard = ({ experience, onClick }: ExperienceCardProps) => 
 
   return (
     <Card
-      className="w-72 sm:w-80 flex-shrink-0 overflow-hidden border-0 shadow-sm bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all duration-normal cursor-pointer"
+      className="w-64 sm:w-72 md:w-80 flex-shrink-0 overflow-hidden border-0 shadow-sm bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all duration-normal cursor-pointer"
       onClick={onClick}
       data-testid={`card-experience-${experience.type}`}
     >
-      <div className="relative h-32 overflow-hidden bg-gradient-to-br from-accent/20 to-accent/5">
+      <div className="relative h-28 sm:h-32 overflow-hidden bg-gradient-to-br from-accent/20 to-accent/5">
         <div className="absolute inset-0 flex items-center justify-center">
           {getTypeIcon(experience.type)}
         </div>
@@ -115,7 +113,7 @@ export const ExperienceCard = ({ experience, onClick }: ExperienceCardProps) => 
         )}
       </div>
 
-      <div className="p-4 space-y-3">
+      <div className="p-3 sm:p-4 space-y-2 sm:space-y-3">
         <div>
           <h3 className="font-display font-semibold text-sm text-foreground leading-tight" data-testid="text-experience-title">
             {experience.title}
@@ -141,19 +139,19 @@ export const ExperienceCard = ({ experience, onClick }: ExperienceCardProps) => 
         </div>
 
         {/* Location and Attendees */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div className="flex items-center justify-between text-xs text-muted-foreground gap-2">
           {experience.location && (
-            <div className="flex items-center gap-1">
-              <MapPin className="w-3 h-3" />
-              <span className="font-body text-xs truncate max-w-[120px]">
+            <div className="flex items-center gap-1 flex-1 min-w-0">
+              <MapPin className="w-3 h-3 flex-shrink-0" />
+              <span className="font-body text-xs truncate">
                 {experience.location}
               </span>
             </div>
           )}
           {experience.attendees && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-shrink-0">
               <Users className="w-3 h-3" />
-              <span className="font-body text-xs">
+              <span className="font-body text-xs whitespace-nowrap">
                 {experience.attendees} going
               </span>
             </div>
