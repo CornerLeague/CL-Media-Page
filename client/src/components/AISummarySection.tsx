@@ -34,8 +34,8 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
   }
 
   return (
-    <section className="flex-1 flex items-center justify-center py-8" data-testid="section-ai-summary">
-      <div className="max-w-2xl text-center space-y-4 w-full px-4">
+    <section className="flex-1 flex items-center justify-center px-4 sm:px-6 md:px-8 lg:px-12 py-8" data-testid="section-ai-summary">
+      <div className="max-w-2xl text-center space-y-4 w-full">
         {/* Team Name */}
         {isLoading ? (
           <div className="space-y-2">
@@ -52,8 +52,8 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
 
         {/* AI Summary */}
         {teamDashboard?.summary && (
-          <div className="mt-8 mb-8">
-            <p className="font-body text-muted-foreground text-sm leading-relaxed max-w-xl mx-auto" data-testid="text-ai-summary">
+          <div className="mt-8 mb-8 px-4">
+            <p className="font-body text-muted-foreground text-sm leading-relaxed" data-testid="text-ai-summary">
               {teamDashboard.summary.text}
             </p>
           </div>
