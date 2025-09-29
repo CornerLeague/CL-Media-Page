@@ -44,7 +44,7 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
           </div>
         ) : (
           <h1 className="font-display font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl text-foreground leading-tight">
-            <span className="block text-secondary dark:text-foreground mt-2 text-5xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl font-bold" data-testid="text-team-name">
+            <span className="block text-secondary dark:text-foreground mt-2 text-7xl sm:text-7xl md:text-8xl lg:text-9xl xl:text-9xl font-bold" data-testid="text-team-name">
               {teamDashboard?.team.name?.toUpperCase() || 'TEAM'}
             </span>
           </h1>
