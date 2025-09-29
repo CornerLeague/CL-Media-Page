@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Update, UpdateCard } from './UpdateCard';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Newspaper, ChevronDown } from 'lucide-react';
+import { Newspaper } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -59,7 +59,6 @@ export const RecentUpdatesSection = ({ updates, isLoading, error, onCategoryChan
               className="w-auto h-auto border-0 bg-transparent p-0 gap-1 hover:bg-transparent focus:ring-0 focus:ring-offset-0"
               data-testid="select-category-trigger"
             >
-              <ChevronDown className="w-4 h-4 text-muted-foreground" />
             </SelectTrigger>
             <SelectContent data-testid="select-category-content">
               <SelectItem value="Latest News" data-testid="option-latest-news">Latest News</SelectItem>
