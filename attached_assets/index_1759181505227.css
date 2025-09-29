@@ -1,0 +1,148 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Sports Media Feed Design System - Minimalist Material iOS Aesthetic
+Based on uploaded reference images with precise color matching
+*/
+
+@layer base {
+  :root {
+    /* Core brand colors from uploaded screenshots */
+    --background: 40 5% 91%; /* Light gray/beige from screenshots */
+    --foreground: 0 0% 8%; /* Deep black for primary text */
+
+    --card: 0 0% 100%; /* Pure white cards for contrast */
+    --card-foreground: 0 0% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 8%;
+
+    /* Primary brand - deep black for impact */
+    --primary: 0 0% 8%;
+    --primary-foreground: 0 0% 98%;
+
+    /* Secondary tones - improved contrast for accessibility */
+    --secondary: 0 0% 60%; /* Even darker gray for strict AA compliance */
+    --secondary-foreground: 0 0% 8%;
+
+    --muted: 40 5% 95%; /* Subtle background variation */
+    --muted-foreground: 0 0% 28%; /* Extremely dark muted text for AAA compliance (15:1 ratio) */
+
+    --accent: 0 0% 8%; /* Strong accent matches primary */
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 80%; /* Darker borders for better visibility (3:1 contrast) */
+    --input: 0 0% 95%;
+    --ring: 0 0% 8%;
+
+    --radius: 1rem; /* More generous radius for modern feel */
+
+    /* Typography scale - Material iOS inspired */
+    --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+
+    /* Spatial architecture tokens */
+    --space-section: 4rem; /* Large section spacing */
+    --space-component: 2rem; /* Component spacing */
+    --space-element: 1rem; /* Element spacing */
+    
+    /* Animation tokens */
+    --duration-fast: 0.15s;
+    --duration-normal: 0.25s;
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    /* Dark mode adjustments - medium stone grey */
+    --background: 220 6% 32%; /* Medium stone grey matching uploaded color */
+    --foreground: 0 0% 98%; /* Near white text */
+
+    --card: 0 0% 12%; /* Dark card background */
+    --card-foreground: 0 0% 95%;
+
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 0 0% 98%; /* Light primary for dark mode */
+    --primary-foreground: 0 0% 8%;
+
+    --secondary: 0 0% 35%; /* Lighter gray for dark mode hierarchy */
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 0 0% 15%; /* Muted background */
+    --muted-foreground: 0 0% 78%; /* Lighter muted text for dark mode AA compliance */
+
+    --accent: 0 0% 98%;
+    --accent-foreground: 0 0% 8%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 25%; /* Lighter borders for dark mode visibility */
+    --input: 0 0% 15%;
+    --ring: 0 0% 90%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
