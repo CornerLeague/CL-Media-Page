@@ -1,4 +1,6 @@
 import { ThemeToggle } from './ThemeToggle';
+import { User } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -23,7 +25,20 @@ export const TopNavBar = () => {
               <SelectItem value="nba" data-testid="option-nba">NBA</SelectItem>
             </SelectContent>
           </Select>
-          <ThemeToggle />
+          
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-10 w-10 p-0"
+              data-testid="button-profile"
+              onClick={() => console.log('Profile clicked')}
+            >
+              <User className="h-5 w-5" />
+              <span className="sr-only">Profile</span>
+            </Button>
+            <ThemeToggle />
+          </div>
         </div>
       </div>
     </nav>
