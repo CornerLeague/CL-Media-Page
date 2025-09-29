@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TopNavBar } from "@/components/TopNavBar";
 import { AISummarySection } from "@/components/AISummarySection";
+import { RecentUpdatesSection } from "@/components/RecentUpdatesSection";
 import { FanExperiencesSection } from "@/components/FanExperiencesSection";
 
 function App() {
@@ -39,6 +40,43 @@ function App() {
       { gameId: '3', result: 'W' as const, opponent: 'Nets', diff: 8, date: '2025-01-16' },
     ]
   };
+
+  //todo: remove mock functionality
+  // Mock recent updates data
+  const mockUpdates = [
+    {
+      id: '1',
+      type: 'news' as const,
+      title: 'Warriors Sign New Point Guard',
+      description: 'The Golden State Warriors have officially signed veteran point guard Marcus Johnson to a two-year deal.',
+      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      source: 'ESPN'
+    },
+    {
+      id: '2',
+      type: 'injury' as const,
+      title: 'Stephen Curry Day-to-Day',
+      description: 'Star guard Stephen Curry is listed as day-to-day with a minor ankle sprain sustained in last night\'s game.',
+      timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+      source: 'The Athletic'
+    },
+    {
+      id: '3',
+      type: 'trade' as const,
+      title: 'Warriors Exploring Trade Options',
+      description: 'Sources say the Warriors are actively exploring trade possibilities to bolster their bench depth before the deadline.',
+      timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      source: 'Bleacher Report'
+    },
+    {
+      id: '4',
+      type: 'free_agency' as const,
+      title: 'Free Agent Target Identified',
+      description: 'Reports indicate the Warriors have identified a key free agent target for the upcoming off-season.',
+      timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      source: 'Yahoo Sports'
+    }
+  ];
 
   //todo: remove mock functionality
   // Mock fan experiences data
@@ -87,6 +125,9 @@ function App() {
             <main className="relative">
               {/* AI Summary Section - Hero area with featured team */}
               <AISummarySection teamDashboard={mockTeamDashboard} />
+
+              {/* Recent Updates Section */}
+              <RecentUpdatesSection updates={mockUpdates} />
 
               {/* Fan Experiences Section */}
               <FanExperiencesSection experiences={mockExperiences} />
