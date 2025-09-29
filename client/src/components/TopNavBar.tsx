@@ -1,5 +1,4 @@
 import { ThemeToggle } from './ThemeToggle';
-import { ChevronDown } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -19,7 +18,6 @@ export const TopNavBar = () => {
               data-testid="select-sport-trigger"
             >
               <SelectValue />
-              <ChevronDown className="w-4 h-4" />
             </SelectTrigger>
             <SelectContent data-testid="select-sport-content">
               <SelectItem value="nba" data-testid="option-nba">NBA</SelectItem>
