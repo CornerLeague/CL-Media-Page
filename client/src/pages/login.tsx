@@ -4,7 +4,8 @@ import {
   signInWithPopup, 
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
-  signInWithEmailAndPassword
+  signInWithEmailAndPassword,
+  updateProfile
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,6 +23,10 @@ export default function Login() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [username, setUsername] = useState('');
 
   useEffect(() => {
     // Redirect to home if already logged in
@@ -87,12 +92,29 @@ export default function Login() {
 
   const handleEmailSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate password match
+    if (password !== confirmPassword) {
+      toast({
+        title: 'Passwords do not match',
+        description: 'Please make sure both passwords are the same.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     setIsSigningIn(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // Update user profile with name and username
+      await updateProfile(userCredential.user, {
+        displayName: `${firstName} ${lastName}`,
+      });
+      
       toast({
         title: 'Account created!',
-        description: 'Welcome to Sports Media.',
+        description: 'Welcome to Corner League Media.',
       });
       setLocation('/');
     } catch (error: any) {
@@ -210,6 +232,47 @@ export default function Login() {
 
             <TabsContent value="signup" className="space-y-4">
               <form onSubmit={handleEmailSignUp} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-firstname">First Name</Label>
+                    <Input
+                      id="signup-firstname"
+                      type="text"
+                      placeholder="John"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      required
+                      disabled={isSigningIn}
+                      data-testid="input-signup-firstname"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-lastname">Last Name</Label>
+                    <Input
+                      id="signup-lastname"
+                      type="text"
+                      placeholder="Doe"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      required
+                      disabled={isSigningIn}
+                      data-testid="input-signup-lastname"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-username">Username</Label>
+                  <Input
+                    id="signup-username"
+                    type="text"
+                    placeholder="johndoe"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                    disabled={isSigningIn}
+                    data-testid="input-signup-username"
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="signup-email">Email</Label>
                   <Input
@@ -233,6 +296,18 @@ export default function Login() {
                     required
                     disabled={isSigningIn}
                     data-testid="input-signup-password"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-confirm-password">Confirm Password</Label>
+                  <Input
+                    id="signup-confirm-password"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    disabled={isSigningIn}
+                    data-testid="input-signup-confirm-password"
                   />
                 </div>
                 <Button
