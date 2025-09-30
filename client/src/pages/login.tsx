@@ -26,7 +26,6 @@ export default function Login() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [username, setUsername] = useState('');
 
   useEffect(() => {
     // Redirect to home if already logged in
@@ -259,19 +258,6 @@ export default function Login() {
                       data-testid="input-signup-lastname"
                     />
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-username">Username</Label>
-                  <Input
-                    id="signup-username"
-                    type="text"
-                    placeholder="johndoe"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                    disabled={isSigningIn}
-                    data-testid="input-signup-username"
-                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="signup-email">Email</Label>
