@@ -425,6 +425,7 @@ export class MemStorage implements IStorage {
       firstName: profile.firstName ?? null,
       lastName: profile.lastName ?? null,
       favoriteSports: profile.favoriteSports ?? null,
+      favoriteTeams: profile.favoriteTeams ?? null,
       onboardingCompleted: profile.onboardingCompleted ?? false,
     };
     this.userProfiles.set(profile.firebaseUid, userProfile);

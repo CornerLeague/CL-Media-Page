@@ -10,6 +10,7 @@ import { AISummarySection } from "@/components/AISummarySection";
 import { RecentUpdatesSection } from "@/components/RecentUpdatesSection";
 import { FanExperiencesSection } from "@/components/FanExperiencesSection";
 import Login from "@/pages/login";
+import Onboarding from "@/pages/onboarding";
 import NotFound from "@/pages/not-found";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -165,6 +166,11 @@ function App() {
           <AuthProvider>
             <Switch>
               <Route path="/login" component={Login} />
+              <Route path="/onboarding">
+                <ProtectedRoute>
+                  <Onboarding />
+                </ProtectedRoute>
+              </Route>
               <Route path="/">
                 <ProtectedRoute>
                   <HomePage />

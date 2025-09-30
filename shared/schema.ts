@@ -149,6 +149,7 @@ export const userProfiles = pgTable("user_profiles", {
   firstName: text("first_name"),
   lastName: text("last_name"),
   favoriteSports: text("favorite_sports").array(),
+  favoriteTeams: text("favorite_teams").array(),
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
 });
 
