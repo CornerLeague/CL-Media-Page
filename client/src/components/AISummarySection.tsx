@@ -57,7 +57,10 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
     return favoriteTeam || null;
   };
 
-  const displayTeamName = getFavoriteTeamForSport() || teamDashboard?.team.name || 'TEAM';
+  const fullTeamName = getFavoriteTeamForSport() || teamDashboard?.team.name || 'TEAM';
+  
+  // Extract just the team name (last word) without the city
+  const displayTeamName = fullTeamName.split(' ').pop() || fullTeamName;
 
   if (error) {
     return (
