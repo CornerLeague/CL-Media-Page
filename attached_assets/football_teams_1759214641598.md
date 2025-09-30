@@ -1,0 +1,35 @@
+Conference: AFC
+- Baltimore Ravens
+- Cincinnati Bengals
+- Cleveland Browns
+- Pittsburgh Steelers				
+- Buffalo Bills
+- Miami Dolphins
+- New England Patriot
+- New York Jets				
+- Houston Texans
+- Indianapolis Colts
+- Jacksonville Jaguars
+- Tennessee Titans				
+- Denver Broncos
+- Kansas City Chiefs
+- Las Vegas Raiders
+- Los Angeles Chargers		
+
+Conference: NFC
+- Chicago Bears
+- Detroit Lions
+- Green Bay Packers
+- Minnesota Vikings				
+- Dallas Cowboys
+- New York Giants
+- Philadelphia Eagles
+- Washington Commanders				
+- Atlanta Falcons
+- Carolina Panthers
+- New Orleans Saints
+- Tampa Bay Buccaneers				
+- Arizona Cardinals
+- Los Angeles Rams
+- San Francisco 49ers
+- Seattle Seahawks				
