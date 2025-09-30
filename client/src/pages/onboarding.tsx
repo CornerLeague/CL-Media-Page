@@ -5,10 +5,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronUp, ChevronDown, Check, ChevronsUpDown, X } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { SPORTS, TEAMS_BY_SPORT, Sport } from "@/data/sportsTeams";
+import { cn } from "@/lib/utils";
 
 export default function Onboarding() {
   const [, setLocation] = useLocation();
@@ -19,6 +23,7 @@ export default function Onboarding() {
   const [selectedSports, setSelectedSports] = useState<Sport[]>([]);
   const [orderedSports, setOrderedSports] = useState<Sport[]>([]);
   const [selectedTeams, setSelectedTeams] = useState<Partial<Record<Sport, string[]>>>({});
+  const [openDropdown, setOpenDropdown] = useState<Sport | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Step 1: Toggle sport selection
@@ -59,21 +64,6 @@ export default function Onboarding() {
     setOrderedSports(newOrder);
   };
 
-  // Step 3: Toggle team selection
-  const toggleTeam = (sport: Sport, team: string) => {
-    const teams = selectedTeams[sport] || [];
-    if (teams.includes(team)) {
-      setSelectedTeams({
-        ...selectedTeams,
-        [sport]: teams.filter((t) => t !== team),
-      });
-    } else {
-      setSelectedTeams({
-        ...selectedTeams,
-        [sport]: [...teams, team],
-      });
-    }
-  };
 
   // Submit onboarding data
   const handleFinish = async () => {
@@ -213,32 +203,91 @@ export default function Onboarding() {
               <p className="text-sm text-muted-foreground">Choose teams for each sport</p>
               {orderedSports.map((sport) => {
                 const divisions = TEAMS_BY_SPORT[sport];
+                const sportTeams = selectedTeams[sport] || [];
+                
                 return (
-                  <div key={sport} className="space-y-4">
+                  <div key={sport} className="space-y-3">
                     <h4 className="font-semibold text-base">{sport}</h4>
-                    {Object.entries(divisions).map(([division, teams]) => (
-                      <div key={`${sport}-${division}`} className="space-y-2 pl-3">
-                        <p className="text-sm font-medium text-muted-foreground">{division}</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                          {teams.map((team) => (
-                            <div key={team} className="flex items-center space-x-2">
-                              <Checkbox
-                                id={`team-${sport}-${division}-${team}`}
-                                checked={(selectedTeams[sport] || []).includes(team)}
-                                onCheckedChange={() => toggleTeam(sport, team)}
-                                data-testid={`checkbox-team-${sport.toLowerCase().replace(/\s+/g, '-')}-${division.toLowerCase().replace(/\s+/g, '-')}-${team.toLowerCase().replace(/\s+/g, '-')}`}
-                              />
-                              <Label
-                                htmlFor={`team-${sport}-${division}-${team}`}
-                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                              >
-                                {team}
-                              </Label>
-                            </div>
-                          ))}
-                        </div>
+                    
+                    <Popover 
+                      open={openDropdown === sport} 
+                      onOpenChange={(open) => setOpenDropdown(open ? sport : null)}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={openDropdown === sport}
+                          className="w-full justify-between"
+                          data-testid={`button-select-teams-${sport.toLowerCase().replace(/\s+/g, '-')}`}
+                        >
+                          <span className="text-muted-foreground">
+                            {sportTeams.length > 0 
+                              ? `${sportTeams.length} team${sportTeams.length > 1 ? 's' : ''} selected`
+                              : "Select teams..."}
+                          </span>
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px] p-0" align="start">
+                        <Command>
+                          <CommandInput 
+                            placeholder={`Search ${sport} teams...`}
+                            data-testid={`input-search-teams-${sport.toLowerCase().replace(/\s+/g, '-')}`}
+                          />
+                          <CommandList>
+                            <CommandEmpty>No teams found.</CommandEmpty>
+                            {Object.entries(divisions).map(([division, teams]) => (
+                              <CommandGroup key={division} heading={division}>
+                                {teams.map((team) => (
+                                  <CommandItem
+                                    key={team}
+                                    value={team}
+                                    onSelect={() => {
+                                      addTeam(sport, team);
+                                      setOpenDropdown(null);
+                                    }}
+                                    data-testid={`option-team-${sport.toLowerCase().replace(/\s+/g, '-')}-${team.toLowerCase().replace(/\s+/g, '-')}`}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        sportTeams.includes(team) ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    {team}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            ))}
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+
+                    {/* Selected Teams */}
+                    {sportTeams.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {sportTeams.map((team) => (
+                          <Badge
+                            key={team}
+                            variant="secondary"
+                            className="gap-1"
+                            data-testid={`badge-team-${sport.toLowerCase().replace(/\s+/g, '-')}-${team.toLowerCase().replace(/\s+/g, '-')}`}
+                          >
+                            {team}
+                            <button
+                              type="button"
+                              onClick={() => removeTeam(sport, team)}
+                              className="ml-1 hover:bg-muted rounded-sm"
+                              data-testid={`button-remove-team-${sport.toLowerCase().replace(/\s+/g, '-')}-${team.toLowerCase().replace(/\s+/g, '-')}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
                 );
               })}
