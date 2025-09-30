@@ -1,5 +1,8 @@
+import { useState, useEffect } from 'react';
 import { ScoresWidget, GameScore, RecentResult } from './ScoresWidget';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useSport } from '@/contexts/SportContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
@@ -27,6 +30,7 @@ interface AISummarySectionProps {
 export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummarySectionProps) => {
   const { selectedSport } = useSport();
   const { user } = useAuth();
+  const [currentTeamIndex, setCurrentTeamIndex] = useState(0);
 
   // Fetch user profile to get favorite teams
   const { data: profile } = useQuery<UserProfile>({
@@ -34,33 +38,54 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
     enabled: !!user?.uid,
   });
 
-  // Get the user's favorite team for the selected sport
-  const getFavoriteTeamForSport = () => {
+  // Get all the user's favorite teams for the selected sport
+  const getFavoriteTeamsForSport = () => {
     if (!selectedSport || !profile?.favoriteTeams) {
-      return null;
+      return [];
     }
 
     // Get all teams for the selected sport
     const sportTeams = TEAMS_BY_SPORT[selectedSport];
     if (!sportTeams) {
-      return null;
+      return [];
     }
 
     // Flatten all teams in the sport
     const allSportTeams = Object.values(sportTeams).flat();
 
-    // Find the first favorite team that matches this sport
-    const favoriteTeam = profile.favoriteTeams.find(team => 
+    // Find all favorite teams that match this sport
+    const favoriteTeams = profile.favoriteTeams.filter(team => 
       allSportTeams.includes(team)
     );
 
-    return favoriteTeam || null;
+    return favoriteTeams;
   };
 
-  const fullTeamName = getFavoriteTeamForSport() || teamDashboard?.team.name || 'TEAM';
+  const favoriteTeams = getFavoriteTeamsForSport();
+  
+  // Reset index when sport changes or teams change
+  useEffect(() => {
+    setCurrentTeamIndex(0);
+  }, [selectedSport, favoriteTeams.length]);
+
+  const currentFullTeamName = favoriteTeams[currentTeamIndex] || teamDashboard?.team.name || 'TEAM';
   
   // Extract just the team name (last word) without the city
-  const displayTeamName = fullTeamName.split(' ').pop() || fullTeamName;
+  const displayTeamName = currentFullTeamName.split(' ').pop() || currentFullTeamName;
+
+  const hasMultipleTeams = favoriteTeams.length > 1;
+
+  const handlePreviousTeam = () => {
+    setCurrentTeamIndex((prev) => 
+      prev === 0 ? favoriteTeams.length - 1 : prev - 1
+    );
+  };
+
+  const handleNextTeam = () => {
+    setCurrentTeamIndex((prev) => 
+      prev === favoriteTeams.length - 1 ? 0 : prev + 1
+    );
+  };
 
   if (error) {
     return (
@@ -85,11 +110,37 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
             <Skeleton className="h-16 w-48 mx-auto" />
           </div>
         ) : (
-          <h1 className="font-display font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl text-foreground leading-tight">
-            <span className="block text-secondary dark:text-foreground mt-2 text-7xl sm:text-7xl md:text-8xl lg:text-9xl xl:text-9xl font-bold" data-testid="text-team-name">
-              {displayTeamName.toUpperCase()}
-            </span>
-          </h1>
+          <div className="flex items-center justify-center gap-2 sm:gap-4">
+            {hasMultipleTeams && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handlePreviousTeam}
+                className="h-10 w-10 sm:h-12 sm:w-12"
+                data-testid="button-previous-team"
+              >
+                <ChevronLeft className="h-6 w-6 sm:h-8 sm:w-8" />
+              </Button>
+            )}
+            
+            <h1 className="font-display font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl text-foreground leading-tight">
+              <span className="block text-secondary dark:text-foreground mt-2 text-7xl sm:text-7xl md:text-8xl lg:text-9xl xl:text-9xl font-bold" data-testid="text-team-name">
+                {displayTeamName.toUpperCase()}
+              </span>
+            </h1>
+
+            {hasMultipleTeams && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleNextTeam}
+                className="h-10 w-10 sm:h-12 sm:w-12"
+                data-testid="button-next-team"
+              >
+                <ChevronRight className="h-6 w-6 sm:h-8 sm:w-8" />
+              </Button>
+            )}
+          </div>
         )}
 
         {/* AI Summary */}
