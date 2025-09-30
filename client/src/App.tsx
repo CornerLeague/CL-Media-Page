@@ -1,5 +1,5 @@
 import { Switch, Route, Redirect } from "wouter";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "@/components/ui/toaster";
@@ -12,22 +12,39 @@ import { FanExperiencesSection } from "@/components/FanExperiencesSection";
 import Login from "@/pages/login";
 import Onboarding from "@/pages/onboarding";
 import NotFound from "@/pages/not-found";
+import type { UserProfile } from "@shared/schema";
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+function ProtectedRoute({ children, requireOnboarding = true }: { children: React.ReactNode; requireOnboarding?: boolean }) {
+  const { user, loading: authLoading } = useAuth();
 
-  if (loading) {
+  // Fetch user profile when authenticated
+  const { data: profile, isLoading: profileLoading } = useQuery<UserProfile>({
+    queryKey: ["/api/profile", user?.uid],
+    enabled: !!user?.uid,
+  });
+
+  // Show loading state while checking auth or profile
+  if (authLoading || (user && profileLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-muted-foreground" data-testid="text-loading">Loading...</p>
         </div>
       </div>
     );
   }
 
+  // Redirect to login if not authenticated
   if (!user) {
     return <Redirect to="/login" />;
+  }
+
+  // If onboarding is required, check if user has completed it
+  if (requireOnboarding) {
+    // If profile doesn't exist or onboarding not completed, redirect to onboarding
+    if (!profile || !profile.onboardingCompleted) {
+      return <Redirect to="/onboarding" />;
+    }
   }
 
   return <>{children}</>;
@@ -167,12 +184,12 @@ function App() {
             <Switch>
               <Route path="/login" component={Login} />
               <Route path="/onboarding">
-                <ProtectedRoute>
+                <ProtectedRoute requireOnboarding={false}>
                   <Onboarding />
                 </ProtectedRoute>
               </Route>
               <Route path="/">
-                <ProtectedRoute>
+                <ProtectedRoute requireOnboarding={true}>
                   <HomePage />
                 </ProtectedRoute>
               </Route>
