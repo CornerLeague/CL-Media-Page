@@ -15,10 +15,6 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 35061
-externalPort = 3002
-
-[[ports]]
 localPort = 41817
 externalPort = 3001
 
@@ -49,3 +45,6 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[agent]
+integrations = ["firebase_barebones_javascript:1.0.0"]
