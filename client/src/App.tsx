@@ -11,6 +11,7 @@ import { RecentUpdatesSection } from "@/components/RecentUpdatesSection";
 import { FanExperiencesSection } from "@/components/FanExperiencesSection";
 import Login from "@/pages/login";
 import Onboarding from "@/pages/onboarding";
+import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 import type { UserProfile } from "@shared/schema";
 
@@ -186,6 +187,11 @@ function App() {
               <Route path="/onboarding">
                 <ProtectedRoute requireOnboarding={false}>
                   <Onboarding />
+                </ProtectedRoute>
+              </Route>
+              <Route path="/settings">
+                <ProtectedRoute requireOnboarding={true}>
+                  <Settings />
                 </ProtectedRoute>
               </Route>
               <Route path="/">
