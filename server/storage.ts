@@ -17,6 +17,8 @@ import {
   type InsertExperience,
   type Rsvp,
   type InsertRsvp,
+  type UserProfile,
+  type InsertUserProfile,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -81,6 +83,11 @@ export interface IStorage {
   getRsvpCount(experienceId: string): Promise<number>;
   deleteRsvp(experienceId: string, userId: string): Promise<void>;
   hasRsvp(experienceId: string, userId: string): Promise<boolean>;
+
+  // User Profiles
+  getUserProfile(firebaseUid: string): Promise<UserProfile | undefined>;
+  createUserProfile(profile: InsertUserProfile): Promise<UserProfile>;
+  updateUserProfile(firebaseUid: string, profile: Partial<InsertUserProfile>): Promise<UserProfile | undefined>;
 }
 
 export class MemStorage implements IStorage {
@@ -93,6 +100,7 @@ export class MemStorage implements IStorage {
   private updates: Map<string, Update>;
   private experiences: Map<string, Experience>;
   private rsvps: Map<string, Rsvp>;
+  private userProfiles: Map<string, UserProfile>;
 
   constructor() {
     this.users = new Map();
@@ -104,6 +112,7 @@ export class MemStorage implements IStorage {
     this.updates = new Map();
     this.experiences = new Map();
     this.rsvps = new Map();
+    this.userProfiles = new Map();
   }
 
   // Users
@@ -403,6 +412,39 @@ export class MemStorage implements IStorage {
     return Array.from(this.rsvps.values()).some(
       (r) => r.experienceId === experienceId && r.userId === userId,
     );
+  }
+
+  // User Profiles
+  async getUserProfile(firebaseUid: string): Promise<UserProfile | undefined> {
+    return this.userProfiles.get(firebaseUid);
+  }
+
+  async createUserProfile(profile: InsertUserProfile): Promise<UserProfile> {
+    const userProfile: UserProfile = {
+      firebaseUid: profile.firebaseUid,
+      firstName: profile.firstName ?? null,
+      lastName: profile.lastName ?? null,
+      favoriteSports: profile.favoriteSports ?? null,
+      onboardingCompleted: profile.onboardingCompleted ?? false,
+    };
+    this.userProfiles.set(profile.firebaseUid, userProfile);
+    return userProfile;
+  }
+
+  async updateUserProfile(
+    firebaseUid: string,
+    profile: Partial<InsertUserProfile>,
+  ): Promise<UserProfile | undefined> {
+    const existingProfile = this.userProfiles.get(firebaseUid);
+    if (!existingProfile) return undefined;
+
+    const updatedProfile: UserProfile = {
+      ...existingProfile,
+      ...profile,
+      firebaseUid,
+    };
+    this.userProfiles.set(firebaseUid, updatedProfile);
+    return updatedProfile;
   }
 }
 
