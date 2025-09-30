@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -143,3 +143,16 @@ export const insertRsvpSchema = createInsertSchema(rsvps).omit({
 
 export type InsertRsvp = z.infer<typeof insertRsvpSchema>;
 export type Rsvp = typeof rsvps.$inferSelect;
+
+export const userProfiles = pgTable("user_profiles", {
+  firebaseUid: text("firebase_uid").primaryKey(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  favoriteSports: text("favorite_sports").array(),
+  onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
+});
+
+export const insertUserProfileSchema = createInsertSchema(userProfiles);
+
+export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
+export type UserProfile = typeof userProfiles.$inferSelect;
