@@ -64,6 +64,23 @@ export default function Onboarding() {
     setOrderedSports(newOrder);
   };
 
+  // Step 3: Toggle team selection (add or remove)
+  const toggleTeam = (sport: Sport, team: string) => {
+    setSelectedTeams((prev) => {
+      const teams = prev[sport] || [];
+      if (teams.includes(team)) {
+        return {
+          ...prev,
+          [sport]: teams.filter((t) => t !== team),
+        };
+      } else {
+        return {
+          ...prev,
+          [sport]: [...teams, team],
+        };
+      }
+    });
+  };
 
   // Submit onboarding data
   const handleFinish = async () => {
@@ -244,8 +261,7 @@ export default function Onboarding() {
                                     key={team}
                                     value={team}
                                     onSelect={() => {
-                                      addTeam(sport, team);
-                                      setOpenDropdown(null);
+                                      toggleTeam(sport, team);
                                     }}
                                     data-testid={`option-team-${sport.toLowerCase().replace(/\s+/g, '-')}-${team.toLowerCase().replace(/\s+/g, '-')}`}
                                   >
@@ -278,7 +294,7 @@ export default function Onboarding() {
                             {team}
                             <button
                               type="button"
-                              onClick={() => removeTeam(sport, team)}
+                              onClick={() => toggleTeam(sport, team)}
                               className="ml-1 hover:bg-muted rounded-sm"
                               data-testid={`button-remove-team-${sport.toLowerCase().replace(/\s+/g, '-')}-${team.toLowerCase().replace(/\s+/g, '-')}`}
                             >
