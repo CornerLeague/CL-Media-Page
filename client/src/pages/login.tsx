@@ -121,7 +121,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Welcome to Sports Media</CardTitle>
+          <CardTitle className="text-2xl font-bold">Corner League Media</CardTitle>
           <CardDescription>
             Sign in or create an account to access your personalized sports feed
           </CardDescription>
