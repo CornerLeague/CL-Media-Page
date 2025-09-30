@@ -1,6 +1,8 @@
-export const SPORTS = ["NBA", "NFL", "MLB", "NHL", "College Football", "College Basketball", "Soccer"];
+export const SPORTS = ["NBA", "NFL", "MLB", "NHL", "College Football", "College Basketball", "Soccer"] as const;
 
-export const TEAMS_BY_SPORT: Record<string, Record<string, string[]>> = {
+export type Sport = typeof SPORTS[number];
+
+export const TEAMS_BY_SPORT: Record<Sport, Record<string, string[]>> = {
   "NBA": {
     "Eastern": [
       "Boston Celtics",

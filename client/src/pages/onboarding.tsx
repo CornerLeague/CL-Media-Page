@@ -8,9 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { SPORTS, TEAMS_BY_SPORT } from "@/data/sportsTeams";
-
-type Sport = typeof SPORTS[number];
+import { SPORTS, TEAMS_BY_SPORT, Sport } from "@/data/sportsTeams";
 
 export default function Onboarding() {
   const [, setLocation] = useLocation();
@@ -20,7 +18,7 @@ export default function Onboarding() {
   const [step, setStep] = useState(1);
   const [selectedSports, setSelectedSports] = useState<Sport[]>([]);
   const [orderedSports, setOrderedSports] = useState<Sport[]>([]);
-  const [selectedTeams, setSelectedTeams] = useState<Record<string, string[]>>({});
+  const [selectedTeams, setSelectedTeams] = useState<Partial<Record<Sport, string[]>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Step 1: Toggle sport selection
@@ -62,7 +60,7 @@ export default function Onboarding() {
   };
 
   // Step 3: Toggle team selection
-  const toggleTeam = (sport: string, team: string) => {
+  const toggleTeam = (sport: Sport, team: string) => {
     const teams = selectedTeams[sport] || [];
     if (teams.includes(team)) {
       setSelectedTeams({
@@ -98,7 +96,7 @@ export default function Onboarding() {
       const lastName = nameParts.slice(1).join(" ") || "";
 
       // Flatten selectedTeams into a single array
-      const favoriteTeams = orderedSports.flatMap((sport) => selectedTeams[sport]);
+      const favoriteTeams = orderedSports.flatMap((sport) => selectedTeams[sport] ?? []);
 
       // Create profile with favorite sports and teams
       await apiRequest("POST", "/api/profile", {
@@ -214,24 +212,24 @@ export default function Onboarding() {
               <h3 className="text-lg font-semibold" data-testid="text-step-title">Select Your Favorite Teams</h3>
               <p className="text-sm text-muted-foreground">Choose teams for each sport</p>
               {orderedSports.map((sport) => {
-                const divisions = TEAMS_BY_SPORT[sport] || {};
+                const divisions = TEAMS_BY_SPORT[sport];
                 return (
                   <div key={sport} className="space-y-4">
                     <h4 className="font-semibold text-base">{sport}</h4>
                     {Object.entries(divisions).map(([division, teams]) => (
                       <div key={`${sport}-${division}`} className="space-y-2 pl-3">
                         <p className="text-sm font-medium text-muted-foreground">{division}</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                           {teams.map((team) => (
                             <div key={team} className="flex items-center space-x-2">
                               <Checkbox
-                                id={`team-${sport}-${team}`}
+                                id={`team-${sport}-${division}-${team}`}
                                 checked={(selectedTeams[sport] || []).includes(team)}
                                 onCheckedChange={() => toggleTeam(sport, team)}
-                                data-testid={`checkbox-team-${sport.toLowerCase().replace(/\s+/g, '-')}-${team.toLowerCase().replace(/\s+/g, '-')}`}
+                                data-testid={`checkbox-team-${sport.toLowerCase().replace(/\s+/g, '-')}-${division.toLowerCase().replace(/\s+/g, '-')}-${team.toLowerCase().replace(/\s+/g, '-')}`}
                               />
                               <Label
-                                htmlFor={`team-${sport}-${team}`}
+                                htmlFor={`team-${sport}-${division}-${team}`}
                                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                               >
                                 {team}
