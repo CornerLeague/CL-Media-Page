@@ -1,5 +1,10 @@
 import { ScoresWidget, GameScore, RecentResult } from './ScoresWidget';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useSport } from '@/contexts/SportContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import type { UserProfile } from '@shared/schema';
+import { TEAMS_BY_SPORT } from '@/data/sportsTeams';
 
 export interface TeamDashboard {
   team: {
@@ -20,6 +25,40 @@ interface AISummarySectionProps {
 }
 
 export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummarySectionProps) => {
+  const { selectedSport } = useSport();
+  const { user } = useAuth();
+
+  // Fetch user profile to get favorite teams
+  const { data: profile } = useQuery<UserProfile>({
+    queryKey: ["/api/profile", user?.uid],
+    enabled: !!user?.uid,
+  });
+
+  // Get the user's favorite team for the selected sport
+  const getFavoriteTeamForSport = () => {
+    if (!selectedSport || !profile?.favoriteTeams) {
+      return null;
+    }
+
+    // Get all teams for the selected sport
+    const sportTeams = TEAMS_BY_SPORT[selectedSport];
+    if (!sportTeams) {
+      return null;
+    }
+
+    // Flatten all teams in the sport
+    const allSportTeams = Object.values(sportTeams).flat();
+
+    // Find the first favorite team that matches this sport
+    const favoriteTeam = profile.favoriteTeams.find(team => 
+      allSportTeams.includes(team)
+    );
+
+    return favoriteTeam || null;
+  };
+
+  const displayTeamName = getFavoriteTeamForSport() || teamDashboard?.team.name || 'TEAM';
+
   if (error) {
     return (
       <section className="flex-1 flex items-center justify-center px-4 sm:px-6 md:px-8 lg:px-12 py-8" data-testid="section-ai-summary">
@@ -45,7 +84,7 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
         ) : (
           <h1 className="font-display font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl text-foreground leading-tight">
             <span className="block text-secondary dark:text-foreground mt-2 text-7xl sm:text-7xl md:text-8xl lg:text-9xl xl:text-9xl font-bold" data-testid="text-team-name">
-              {teamDashboard?.team.name?.toUpperCase() || 'TEAM'}
+              {displayTeamName.toUpperCase()}
             </span>
           </h1>
         )}
@@ -70,7 +109,7 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
             <ScoresWidget
               latestScore={teamDashboard?.latestScore}
               recentResults={teamDashboard?.recentResults || []}
-              teamName={teamDashboard?.team.name}
+              teamName={displayTeamName}
             />
           )}
         </div>
