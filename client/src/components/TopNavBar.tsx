@@ -19,11 +19,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSport } from '@/contexts/SportContext';
 import { useToast } from '@/hooks/use-toast';
+import type { Sport } from '@/data/sportsTeams';
 
 export const TopNavBar = () => {
   const [, setLocation] = useLocation();
   const { user, signOut } = useAuth();
+  const { selectedSport, setSelectedSport, availableSports } = useSport();
   const { toast } = useToast();
 
   const handleSignOut = async () => {
@@ -51,21 +54,38 @@ export const TopNavBar = () => {
     return user.displayName[0].toUpperCase();
   };
 
+  const handleSportChange = (value: string) => {
+    setSelectedSport(value as Sport);
+  };
+
+  // Show dropdown only if user has favorite sports
+  const showSportSelector = availableSports.length > 0;
+
   return (
     <nav className="w-full border-b border-border/20 bg-background/80 backdrop-blur-sm sticky top-0 z-50" data-testid="nav-top">
       <div className="px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 py-3 sm:py-4">
         <div className="flex items-center justify-between gap-2">
-          <Select defaultValue="nba">
-            <SelectTrigger 
-              className="w-auto h-auto border-0 bg-transparent p-0 gap-1 hover:bg-transparent focus:ring-0 focus:ring-offset-0 font-display font-bold text-base sm:text-lg text-foreground"
-              data-testid="select-sport-trigger"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent data-testid="select-sport-content">
-              <SelectItem value="nba" data-testid="option-nba">NBA</SelectItem>
-            </SelectContent>
-          </Select>
+          {showSportSelector && selectedSport && (
+            <Select value={selectedSport} onValueChange={handleSportChange}>
+              <SelectTrigger 
+                className="w-auto h-auto border-0 bg-transparent p-0 gap-1 hover:bg-transparent focus:ring-0 focus:ring-offset-0 font-display font-bold text-base sm:text-lg text-foreground"
+                data-testid="select-sport-trigger"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent data-testid="select-sport-content">
+                {availableSports.map((sport) => (
+                  <SelectItem 
+                    key={sport} 
+                    value={sport}
+                    data-testid={`option-${sport.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    {sport}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           
           <div className="flex items-center gap-1 sm:gap-2">
             {user ? (

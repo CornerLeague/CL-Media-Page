@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { SportProvider } from "@/contexts/SportContext";
 import { TopNavBar } from "@/components/TopNavBar";
 import { AISummarySection } from "@/components/AISummarySection";
 import { RecentUpdatesSection } from "@/components/RecentUpdatesSection";
@@ -182,26 +183,28 @@ function App() {
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
         <TooltipProvider>
           <AuthProvider>
-            <Switch>
-              <Route path="/login" component={Login} />
-              <Route path="/onboarding">
-                <ProtectedRoute requireOnboarding={false}>
-                  <Onboarding />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/settings">
-                <ProtectedRoute requireOnboarding={true}>
-                  <Settings />
-                </ProtectedRoute>
-              </Route>
-              <Route path="/">
-                <ProtectedRoute requireOnboarding={true}>
-                  <HomePage />
-                </ProtectedRoute>
-              </Route>
-              <Route component={NotFound} />
-            </Switch>
-            <Toaster />
+            <SportProvider>
+              <Switch>
+                <Route path="/login" component={Login} />
+                <Route path="/onboarding">
+                  <ProtectedRoute requireOnboarding={false}>
+                    <Onboarding />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/settings">
+                  <ProtectedRoute requireOnboarding={true}>
+                    <Settings />
+                  </ProtectedRoute>
+                </Route>
+                <Route path="/">
+                  <ProtectedRoute requireOnboarding={true}>
+                    <HomePage />
+                  </ProtectedRoute>
+                </Route>
+                <Route component={NotFound} />
+              </Switch>
+              <Toaster />
+            </SportProvider>
           </AuthProvider>
         </TooltipProvider>
       </ThemeProvider>
