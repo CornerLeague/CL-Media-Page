@@ -8,15 +8,9 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { SPORTS, TEAMS_BY_SPORT } from "@/data/sportsTeams";
 
-type Sport = "NBA" | "NFL" | "MLB" | "NHL";
-
-const TEAMS: Record<Sport, string[]> = {
-  NBA: ["Warriors", "Lakers", "Celtics", "Bulls"],
-  NFL: ["49ers", "Cowboys", "Patriots", "Packers"],
-  MLB: ["Giants", "Yankees", "Red Sox", "Dodgers"],
-  NHL: ["Sharks", "Bruins", "Maple Leafs", "Canadiens"],
-};
+type Sport = typeof SPORTS[number];
 
 export default function Onboarding() {
   const [, setLocation] = useLocation();
@@ -26,12 +20,7 @@ export default function Onboarding() {
   const [step, setStep] = useState(1);
   const [selectedSports, setSelectedSports] = useState<Sport[]>([]);
   const [orderedSports, setOrderedSports] = useState<Sport[]>([]);
-  const [selectedTeams, setSelectedTeams] = useState<Record<Sport, string[]>>({
-    NBA: [],
-    NFL: [],
-    MLB: [],
-    NHL: [],
-  });
+  const [selectedTeams, setSelectedTeams] = useState<Record<string, string[]>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Step 1: Toggle sport selection
@@ -73,8 +62,8 @@ export default function Onboarding() {
   };
 
   // Step 3: Toggle team selection
-  const toggleTeam = (sport: Sport, team: string) => {
-    const teams = selectedTeams[sport];
+  const toggleTeam = (sport: string, team: string) => {
+    const teams = selectedTeams[sport] || [];
     if (teams.includes(team)) {
       setSelectedTeams({
         ...selectedTeams,
@@ -160,13 +149,13 @@ export default function Onboarding() {
               <h3 className="text-lg font-semibold" data-testid="text-step-title">Select Your Favorite Sports</h3>
               <p className="text-sm text-muted-foreground">Choose at least one sport you'd like to follow</p>
               <div className="space-y-3">
-                {(["NBA", "NFL", "MLB", "NHL"] as Sport[]).map((sport) => (
+                {SPORTS.map((sport) => (
                   <div key={sport} className="flex items-center space-x-2">
                     <Checkbox
                       id={`sport-${sport}`}
                       checked={selectedSports.includes(sport)}
                       onCheckedChange={() => toggleSport(sport)}
-                      data-testid={`checkbox-sport-${sport.toLowerCase()}`}
+                      data-testid={`checkbox-sport-${sport.toLowerCase().replace(/\s+/g, '-')}`}
                     />
                     <Label
                       htmlFor={`sport-${sport}`}
@@ -224,29 +213,37 @@ export default function Onboarding() {
             <div className="space-y-6">
               <h3 className="text-lg font-semibold" data-testid="text-step-title">Select Your Favorite Teams</h3>
               <p className="text-sm text-muted-foreground">Choose teams for each sport</p>
-              {orderedSports.map((sport) => (
-                <div key={sport} className="space-y-3">
-                  <h4 className="font-medium">{sport}</h4>
-                  <div className="space-y-2">
-                    {TEAMS[sport].map((team) => (
-                      <div key={team} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`team-${sport}-${team}`}
-                          checked={selectedTeams[sport].includes(team)}
-                          onCheckedChange={() => toggleTeam(sport, team)}
-                          data-testid={`checkbox-team-${sport.toLowerCase()}-${team.toLowerCase().replace(/\s+/g, '-')}`}
-                        />
-                        <Label
-                          htmlFor={`team-${sport}-${team}`}
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                        >
-                          {team}
-                        </Label>
+              {orderedSports.map((sport) => {
+                const divisions = TEAMS_BY_SPORT[sport] || {};
+                return (
+                  <div key={sport} className="space-y-4">
+                    <h4 className="font-semibold text-base">{sport}</h4>
+                    {Object.entries(divisions).map(([division, teams]) => (
+                      <div key={`${sport}-${division}`} className="space-y-2 pl-3">
+                        <p className="text-sm font-medium text-muted-foreground">{division}</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {teams.map((team) => (
+                            <div key={team} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`team-${sport}-${team}`}
+                                checked={(selectedTeams[sport] || []).includes(team)}
+                                onCheckedChange={() => toggleTeam(sport, team)}
+                                data-testid={`checkbox-team-${sport.toLowerCase().replace(/\s+/g, '-')}-${team.toLowerCase().replace(/\s+/g, '-')}`}
+                              />
+                              <Label
+                                htmlFor={`team-${sport}-${team}`}
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                              >
+                                {team}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
