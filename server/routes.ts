@@ -54,14 +54,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/profile/:firebaseUid/onboarding", async (req, res) => {
     try {
       const { firebaseUid } = req.params;
+      console.log("Marking onboarding complete for:", firebaseUid);
+      
       const profile = await storage.updateUserProfile(firebaseUid, {
         onboardingCompleted: true
       });
       
+      console.log("Updated profile:", profile);
+      
       if (!profile) {
+        console.log("Profile not found!");
         return res.status(404).json({ error: "Profile not found" });
       }
       
+      console.log("Returning profile to client:", JSON.stringify(profile));
       return res.json(profile);
     } catch (error) {
       console.error("Error updating onboarding status:", error);
