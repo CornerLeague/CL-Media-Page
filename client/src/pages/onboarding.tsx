@@ -120,27 +120,19 @@ export default function Onboarding() {
       });
 
       // Mark onboarding as complete and get updated profile
-      const updatedProfile = await apiRequest("PUT", `/api/profile/${user.uid}/onboarding`);
-
-      console.log("Onboarding completed, profile:", updatedProfile);
+      const response = await apiRequest("PUT", `/api/profile/${user.uid}/onboarding`);
+      const updatedProfile = await response.json();
 
       // Immediately update cache with server response
       queryClient.setQueryData(["/api/profile"], updatedProfile);
-
-      // Verify cache was updated
-      const cachedProfile = queryClient.getQueryData(["/api/profile"]);
-      console.log("Cached profile after setQueryData:", cachedProfile);
 
       toast({
         title: "Success",
         description: "Your preferences have been saved!",
       });
 
-      // Small delay to ensure state updates propagate
-      setTimeout(() => {
-        console.log("Navigating to home");
-        setLocation("/");
-      }, 100);
+      // Navigate to home
+      setLocation("/");
     } catch (error) {
       console.error("Error saving profile:", error);
       toast({

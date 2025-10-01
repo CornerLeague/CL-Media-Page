@@ -98,10 +98,11 @@ export default function Settings() {
     }
 
     try {
-      const updated = await apiRequest("PATCH", `/api/profile/${user.uid}/name`, {
+      const response = await apiRequest("PATCH", `/api/profile/${user.uid}/name`, {
         firstName: editFirstName.trim(),
         lastName: editLastName.trim(),
       });
+      const updated = await response.json();
 
       // Immediately update cache with server response
       queryClient.setQueryData(["/api/profile"], updated);
@@ -136,9 +137,10 @@ export default function Settings() {
     }
 
     try {
-      const updated = await apiRequest("PATCH", `/api/profile/${user.uid}/sports`, {
+      const response = await apiRequest("PATCH", `/api/profile/${user.uid}/sports`, {
         favoriteSports: editSports,
       });
+      const updated = await response.json();
 
       // Immediately update cache with server response
       queryClient.setQueryData(["/api/profile"], updated);
@@ -167,9 +169,10 @@ export default function Settings() {
     const allTeams = editSports.flatMap(sport => editTeams[sport] || []);
 
     try {
-      const updated = await apiRequest("PATCH", `/api/profile/${user.uid}/teams`, {
+      const response = await apiRequest("PATCH", `/api/profile/${user.uid}/teams`, {
         favoriteTeams: allTeams,
       });
+      const updated = await response.json();
 
       // Immediately update cache with server response
       queryClient.setQueryData(["/api/profile"], updated);
