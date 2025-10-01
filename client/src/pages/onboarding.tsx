@@ -11,7 +11,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { useToast } from "@/hooks/use-toast";
 import { ChevronUp, ChevronDown, Check, ChevronsUpDown, X } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { SPORTS, TEAMS_BY_SPORT, Sport } from "@/data/sportsTeams";
+import { SPORTS, TEAMS_BY_SPORT, Sport, sportHasTeams, TeamSport } from "@/data/sportsTeams";
 import { cn } from "@/lib/utils";
 
 export default function Onboarding() {
@@ -47,6 +47,11 @@ export default function Onboarding() {
     }
     setOrderedSports([...selectedSports]);
     setStep(2);
+  };
+
+  // Get sports that have teams from ordered sports
+  const getSportsWithTeams = (): TeamSport[] => {
+    return orderedSports.filter(sportHasTeams);
   };
 
   // Step 2: Reorder sports
@@ -218,11 +223,17 @@ export default function Onboarding() {
             <div className="space-y-6">
               <h3 className="text-lg font-semibold" data-testid="text-step-title">Select Your Favorite Teams</h3>
               <p className="text-sm text-muted-foreground">Choose teams for each sport</p>
-              {orderedSports.map((sport) => {
-                const divisions = TEAMS_BY_SPORT[sport];
-                const sportTeams = selectedTeams[sport] || [];
-                
-                return (
+              {getSportsWithTeams().length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">No team-based sports selected. Click Finish to complete your setup.</p>
+                </div>
+              ) : (
+                <>
+                  {getSportsWithTeams().map((sport) => {
+                    const divisions = TEAMS_BY_SPORT[sport];
+                    const sportTeams = selectedTeams[sport] || [];
+                  
+                  return (
                   <div key={sport} className="space-y-3">
                     <h4 className="font-semibold text-base">{sport}</h4>
                     
@@ -304,9 +315,11 @@ export default function Onboarding() {
                         ))}
                       </div>
                     )}
-                  </div>
-                );
-              })}
+                    </div>
+                  );
+                  })}
+                </>
+              )}
             </div>
           )}
         </CardContent>

@@ -1,8 +1,34 @@
-export const SPORTS = ["NBA", "NFL", "MLB", "NHL", "College Football", "College Basketball", "Soccer"] as const;
+export const SPORTS = [
+  "NBA", 
+  "NFL", 
+  "MLB", 
+  "NHL", 
+  "College Football", 
+  "College Basketball", 
+  "Soccer",
+  "Tennis",
+  "Golf",
+  "UFC",
+  "Boxing",
+  "F1",
+  "NASCAR",
+  "Pickleball",
+  "Jet Ski"
+] as const;
 
 export type Sport = typeof SPORTS[number];
 
-export const TEAMS_BY_SPORT: Record<Sport, Record<string, string[]>> = {
+// Sports that have teams
+export const TEAM_SPORTS = ["NBA", "NFL", "MLB", "NHL", "College Football", "College Basketball", "Soccer"] as const;
+
+export type TeamSport = typeof TEAM_SPORTS[number];
+
+// Helper function to check if a sport has teams
+export const sportHasTeams = (sport: Sport): sport is TeamSport => {
+  return TEAM_SPORTS.includes(sport as TeamSport);
+};
+
+export const TEAMS_BY_SPORT: Record<TeamSport, Record<string, string[]>> = {
   "NBA": {
     "Eastern": [
       "Boston Celtics",
