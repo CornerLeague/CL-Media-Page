@@ -43,10 +43,13 @@ function ProtectedRoute({ children, requireOnboarding = true }: { children: Reac
 
   // If onboarding is required, check if user has completed it
   if (requireOnboarding) {
+    console.log("ProtectedRoute checking profile:", profile);
     // If profile doesn't exist or onboarding not completed, redirect to onboarding
     if (!profile || !profile.onboardingCompleted) {
+      console.log("Redirecting to onboarding. Profile exists:", !!profile, "Onboarding completed:", profile?.onboardingCompleted);
       return <Redirect to="/onboarding" />;
     }
+    console.log("Profile check passed, rendering protected content");
   }
 
   return <>{children}</>;
