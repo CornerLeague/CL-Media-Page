@@ -124,7 +124,6 @@ export default function Onboarding() {
 
       // Immediately update cache with server response
       queryClient.setQueryData(["/api/profile"], updatedProfile);
-      await queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
 
       toast({
         title: "Success",
