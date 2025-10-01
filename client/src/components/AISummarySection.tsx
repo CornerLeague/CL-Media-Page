@@ -7,7 +7,7 @@ import { useSport } from '@/contexts/SportContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import type { UserProfile } from '@shared/schema';
-import { TEAMS_BY_SPORT } from '@/data/sportsTeams';
+import { TEAMS_BY_SPORT, sportHasTeams } from '@/data/sportsTeams';
 
 export interface TeamDashboard {
   team: {
@@ -68,10 +68,18 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
     setCurrentTeamIndex(0);
   }, [selectedSport, favoriteTeams.length]);
 
-  const currentFullTeamName = favoriteTeams[currentTeamIndex] || teamDashboard?.team.name || selectedSport || 'TEAM';
+  // Determine what to display
+  let displayTeamName = 'TEAM';
   
-  // Extract just the team name (last word) without the city
-  const displayTeamName = currentFullTeamName.split(' ').pop() || currentFullTeamName;
+  if (selectedSport && !sportHasTeams(selectedSport)) {
+    // For individual sports, just show the sport name
+    displayTeamName = selectedSport;
+  } else {
+    // For team sports, show the team name
+    const currentFullTeamName = favoriteTeams[currentTeamIndex] || teamDashboard?.team.name || selectedSport || 'TEAM';
+    // Extract just the team name (last word) without the city
+    displayTeamName = currentFullTeamName.split(' ').pop() || currentFullTeamName;
+  }
 
   const hasMultipleTeams = favoriteTeams.length > 1;
 
