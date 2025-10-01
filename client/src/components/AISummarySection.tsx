@@ -44,8 +44,8 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
       return [];
     }
 
-    // Get all teams for the selected sport
-    const sportTeams = TEAMS_BY_SPORT[selectedSport];
+    // Get all teams for the selected sport (only team-based sports have teams)
+    const sportTeams = TEAMS_BY_SPORT[selectedSport as keyof typeof TEAMS_BY_SPORT];
     if (!sportTeams) {
       return [];
     }
@@ -68,7 +68,7 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
     setCurrentTeamIndex(0);
   }, [selectedSport, favoriteTeams.length]);
 
-  const currentFullTeamName = favoriteTeams[currentTeamIndex] || teamDashboard?.team.name || 'TEAM';
+  const currentFullTeamName = favoriteTeams[currentTeamIndex] || teamDashboard?.team.name || selectedSport || 'TEAM';
   
   // Extract just the team name (last word) without the city
   const displayTeamName = currentFullTeamName.split(' ').pop() || currentFullTeamName;
