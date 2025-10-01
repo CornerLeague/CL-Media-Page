@@ -12,11 +12,22 @@ This document outlines the implementation plan for transforming the Corner Leagu
 
 ### Core Objectives
 - Replace all mock data with live, relevant sports content
+- **Implement user-based personalization: all data filtered by selected favorite teams**
+- **Provide sport overview when no team is selected**
 - Implement intelligent content ranking using BM25 algorithm
 - Generate AI-powered team summaries using DeepSeek
 - Provide real-time scores with cross-source validation
 - Deliver categorized news updates (Injuries, Trades, Roster, General)
 - Surface local fan experiences with RSVP functionality
+
+### Personalization Architecture
+**Team-Based Filtering:** Every data source, agent, and API endpoint filters content based on the user's selected favorite teams. When a user selects a sport + team, all scores, news, summaries, and experiences display **only** for that team.
+
+**Sport Overview Mode:** When a user selects only a sport (no specific team), the system provides a league-wide overview including:
+- Top league news and headlines
+- Featured games and scores
+- League-wide trends and highlights
+- No team-specific filtering applied
 
 ---
 
@@ -27,38 +38,50 @@ This document outlines the implementation plan for transforming the Corner Leagu
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    Presentation Layer                    │
-│  (React UI - AISummarySection, RecentUpdates, Experiences) │
+│           (React UI + User Context Provider)             │
+│    User selects: Sport + Team(s) OR Sport only           │
 └────────────────────┬────────────────────────────────────┘
-                     │
+                     │ (userContext: sport, teams[])
 ┌────────────────────▼────────────────────────────────────┐
 │               Application & API Layer                    │
-│         (Express Routes + WebSocket Events)              │
+│    (Express Routes + WebSocket + Team Filtering)         │
+│         Every endpoint filters by user's teams           │
 └────────────────────┬────────────────────────────────────┘
-                     │
+                     │ (teamIds[])
 ┌────────────────────▼────────────────────────────────────┐
 │           Processing & Analytics Layer                   │
-│                                                          │
+│         **ALL AGENTS FILTER BY TEAM IDs**                │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
 │  │ Scores Agent │  │  News Agent  │  │ Experience   │  │
 │  │ (10-30s)     │  │  (10min)     │  │ Agent (daily)│  │
+│  │ Teams: [...]  │  │ Teams: [...]  │  │ Teams: [...] │  │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  │
 │         │                  │                  │          │
 │  ┌──────▼──────────────────▼──────────────────▼───────┐ │
 │  │        BM25 Indexing & Ranking Engine              │ │
-│  │  (Memory-mapped indexes per team/category)         │ │
+│  │    (Per-team indexes, query filtered by teams)     │ │
 │  └──────┬──────────────────┬──────────────────┬───────┘ │
 │         │                  │                  │          │
 │  ┌──────▼───────┐  ┌──────▼───────┐  ┌──────▼───────┐  │
 │  │Classification│  │  AI Summary  │  │MinHash Dedupe│  │
-│  │ Agent (BM25) │  │(DeepSeek AI) │  │   Service    │  │
+│  │ (per team)   │  │ (per team)   │  │(per team)    │  │
 │  └──────────────┘  └──────────────┘  └──────────────┘  │
 └────────────────────┬────────────────────────────────────┘
-                     │
+                     │ (filtered by teams)
 ┌────────────────────▼────────────────────────────────────┐
 │              Data Ingestion Layer                        │
-│  RSS Feeds | HTML Scrapers | APIs | Search Engines      │
+│   RSS Feeds | HTML Scrapers | APIs | Search Engines     │
+│         Team filters applied at ingestion time           │
 └─────────────────────────────────────────────────────────┘
 ```
+
+### User Context Flow
+
+1. **User Authentication** → Firebase provides user UID
+2. **User Profile** → Fetch user's selected sport and favorite teams
+3. **Context Propagation** → Every API call includes: `{ sport, teamIds[] }`
+4. **Agent Filtering** → All agents only process data for user's teams
+5. **Fallback Mode** → If `teamIds = []`, provide sport-level overview
 
 ---
 
@@ -66,7 +89,12 @@ This document outlines the implementation plan for transforming the Corner Leagu
 
 ### 1. Scores Agent
 
-**Purpose:** Provide accurate, real-time game scores with cross-source validation
+**Purpose:** Provide accurate, real-time game scores with cross-source validation **filtered by user's favorite teams**
+
+**Team-Based Filtering:**
+- When `teamIds` provided → Fetch only games involving those teams
+- When `teamIds = []` → Fetch featured/top games for the sport (league overview)
+- Never mix data from different teams in the same response
 
 **Data Sources:**
 - BallDontLie API (NBA) - Primary source
@@ -74,48 +102,69 @@ This document outlines the implementation plan for transforming the Corner Leagu
 - ESPN, CBS Sports (validation sources)
 
 **Cadence:**
-- Live games: 10-30 seconds
-- Non-live games: Hourly
-- Game schedules: Daily
+- Live games: 10-30 seconds (only for user's teams)
+- Non-live games: Hourly (only for user's teams)
+- Game schedules: Daily (only for user's teams)
 
 **Implementation Details:**
 
 ```typescript
 interface IScoreSource {
-  fetchLive(teamCode: string): Promise<GameScore>;
-  fetchSchedule(teamCode: string, startDate: Date, endDate: Date): Promise<Game[]>;
+  fetchLive(teamCodes: string[]): Promise<GameScore[]>; // Multiple teams
+  fetchSchedule(teamCodes: string[], startDate: Date, endDate: Date): Promise<Game[]>;
   fetchBoxScore(gameId: string): Promise<BoxScore>;
+  fetchFeaturedGames(sport: string, limit: number): Promise<Game[]>; // For overview mode
 }
 
 class BallDontLieAdapter implements IScoreSource {
-  // NBA implementation
+  // NBA implementation with team filtering
+  async fetchLive(teamCodes: string[]): Promise<GameScore[]> {
+    // Fetch games where home_team OR away_team in teamCodes
+  }
 }
 
 class ValidationService {
   // Cross-source majority voting
   // Freshness checks to prevent stale data
   // Duplicate final detection
+  validateForTeams(scores: GameScore[], teamIds: string[]): ValidatedScores;
 }
 ```
 
 **Data Flow:**
-1. Celery Beat triggers score fetch (based on cadence)
-2. Adapter fetches from multiple sources
-3. ValidationService performs cross-source validation
-4. Persist to `games` table in storage
-5. Publish WebSocket event for live updates
-6. Update cache with appropriate TTL
+1. API request includes user's `teamIds` from context
+2. Celery Beat triggers score fetch **per team**
+3. Adapter fetches from multiple sources **filtered by teams**
+4. ValidationService performs cross-source validation
+5. Persist to `games` table with team associations
+6. Publish WebSocket event **only to users following those teams**
+7. Update cache with team-specific keys
+
+**Cache Strategy:**
+```typescript
+// Team-specific cache
+const cacheKey = teamIds.length > 0 
+  ? `scores:teams:${teamIds.sort().join(',')}` 
+  : `scores:sport:${sport}:featured`;
+```
 
 **SLO Targets:**
 - Live updates: <5s p50 latency
 - No duplicate final scores
 - 99.9% accuracy through validation
+- 100% team isolation (no cross-team data leakage)
 
 ---
 
 ### 2. News Scraping Agent
 
-**Purpose:** Discover and rank relevant sports news for each team
+**Purpose:** Discover and rank relevant sports news **exclusively for user's selected favorite teams**
+
+**Team-Based Filtering:**
+- All scraped articles MUST be relevant to user's `teamIds`
+- Articles indexed and stored per team (many-to-many relationship)
+- When `teamIds = []` → Fetch league-wide trending news (no team filter)
+- Team relevance score must be ≥95% to be associated with a team
 
 **Data Sources:**
 
@@ -172,11 +221,13 @@ class BM25Indexer {
 }
 ```
 
-**Relevance Filtering:**
+**Relevance Filtering (Team-Based):**
 - Team name/alias keyword matching
 - Player name entity recognition
 - Location/city matching
 - Minimum relevance threshold: 95%
+- **Articles ONLY indexed for teams that meet relevance threshold**
+- **API responses filtered by user's teamIds at query time**
 
 **Storage Schema:**
 
@@ -191,7 +242,7 @@ interface ArticleSnapshot {
   publishedAt: Date;
   scrapedAt: Date;
   fingerprint: string; // MinHash
-  teamIds: string[];
+  teamIds: string[]; // ONLY teams meeting 95% relevance threshold
   entities: {
     players: string[];
     teams: string[];
@@ -199,13 +250,30 @@ interface ArticleSnapshot {
   };
   trustScore: number;
 }
+
+// Query pattern for user requests
+interface NewsQuery {
+  userId: string;
+  teamIds: string[]; // From user's profile
+  category?: 'injury' | 'roster' | 'trade' | 'general';
+  limit?: number;
+}
+
+// Response only includes articles where:
+// article.teamIds ∩ user.teamIds ≠ ∅
+// OR if user.teamIds = [], return sport-level trending articles
 ```
 
 ---
 
 ### 3. Content Classification Agent
 
-**Purpose:** Categorize news articles into specific types using multi-corpus BM25
+**Purpose:** Categorize news articles into specific types using multi-corpus BM25 **for user's selected teams only**
+
+**Team-Based Classification:**
+- Classification performed ONLY on articles already filtered by user's teams
+- Each team may have different classification distributions
+- Classification results stored per team-article association
 
 **Categories:**
 - `injury` - Injury reports, IL placements, recovery updates
@@ -272,21 +340,28 @@ interface Classification {
 
 ### 4. AI Summary Bot (DeepSeek)
 
-**Purpose:** Generate concise, accurate team summaries from top-ranked articles and recent scores
+**Purpose:** Generate concise, accurate team summaries from top-ranked articles and recent scores **for each of user's selected teams**
+
+**Team-Based Summary Generation:**
+- **One summary generated per team** in user's `teamIds`
+- Each summary uses ONLY that team's articles and scores
+- When `teamIds = []` → Generate sport-level league summary
+- Summaries cached per team, not per user
 
 **AI Provider:** DeepSeek (cost-effective, high-quality)
 
-**Input Sources:**
-1. Top-N articles (freshness + trust weighted)
-2. Latest game score and context
-3. Recent results (last 5 games)
-4. Key statistics/trends
+**Input Sources (Per Team):**
+1. Top-N articles **for this specific team** (freshness + trust weighted)
+2. Latest game score **involving this team**
+3. Recent results **for this team** (last 5 games)
+4. Key statistics/trends **for this team**
 
 **Summary Requirements:**
 - Length: 2-3 sentences
 - No hallucinated transactions or player moves
 - Source citations required
 - Balanced tone (not overly positive/negative)
+- **Team name explicitly mentioned in summary**
 
 **Implementation:**
 
@@ -354,7 +429,13 @@ Rules:
 
 ### 5. Fan Experience Agent
 
-**Purpose:** Discover and rank local fan experiences (watch parties, bars, meetups)
+**Purpose:** Discover and rank local fan experiences **exclusively for user's selected favorite teams**
+
+**Team-Based Experience Discovery:**
+- Only discover experiences for teams in user's `teamIds`
+- Each experience associated with specific team(s)
+- When `teamIds = []` → Show general sport-related events (no team filter)
+- Geographic filtering combined with team filtering
 
 **Data Sources:**
 - Community calendars (ICS feeds)
@@ -479,30 +560,60 @@ interface ExperienceSource {
 
 ## API Endpoints
 
+**All endpoints require user authentication via Firebase ID token**  
+**All endpoints automatically filter by user's selected teams from profile**
+
 ### Dashboard
 
-```
+```typescript
+// Team-specific dashboard
 GET /api/dashboard/:sport/:teamCode
+Headers: { Authorization: "Bearer <firebase-token>" }
 Response: {
   team: { id, name, logo },
   summary: {
-    text: string,
+    text: string, // Generated for THIS team only
     sources: string[],
     generatedAt: Date
   },
-  latestScore: GameScore | null,
-  recentResults: Game[]
+  latestScore: GameScore | null, // For THIS team only
+  recentResults: Game[] // For THIS team only (last 5)
+}
+
+// Sport overview (when no team selected)
+GET /api/dashboard/:sport
+Headers: { Authorization: "Bearer <firebase-token>" }
+Response: {
+  sport: { name, logo },
+  summary: {
+    text: string, // League-level summary
+    sources: string[],
+    generatedAt: Date
+  },
+  featuredGames: Game[], // Top games in league
+  standings: TeamStanding[] // League standings
 }
 ```
 
 ### Updates (News)
 
-```
-GET /api/updates?teamId=:id&category=:cat&limit=:n&sourceType=:type
+```typescript
+// Fetch news for user's teams
+GET /api/updates
+Headers: { Authorization: "Bearer <firebase-token>" }
+Query Params: {
+  category?: 'injury' | 'roster' | 'trade' | 'general',
+  limit?: number,
+  sourceType?: 'official' | 'major' | 'all'
+}
+
+// Automatically filters by user's teamIds from profile
+// Returns ONLY articles where article.teamIds ∩ user.teamIds ≠ ∅
+
 Response: {
   updates: Array<{
     id: string,
-    teamId: string,
+    teamId: string, // Which of user's teams this relates to
     category: string,
     title: string,
     description: string,
@@ -513,26 +624,44 @@ Response: {
   }>,
   total: number
 }
+
+// Sport overview mode (when user.teamIds = [])
+// Returns league-wide trending news
 ```
 
 ### Experiences
 
-```
-GET /api/experiences?teamId=:id&location=:loc&radius=:r
-POST /api/experiences/:id/rsvp
-DELETE /api/experiences/:id/rsvp
+```typescript
+// Fetch experiences for user's teams
+GET /api/experiences
+Headers: { Authorization: "Bearer <firebase-token>" }
+Query Params: {
+  location?: string, // User location for proximity
+  radius?: number,   // Default 25 miles
+  type?: 'watch-party' | 'tailgate' | 'bar' | 'meetup'
+}
+
+// Automatically filters by user's teamIds
+// Returns ONLY experiences for user's teams
+
 Response: {
   experiences: Array<{
     id: string,
+    teamId: string, // Which of user's teams this is for
     type: string,
     title: string,
     description: string,
     location: string,
+    distance: number, // Miles from user
     startTime: Date,
     attendees: number,
     userHasRsvped: boolean
   }>
 }
+
+POST /api/experiences/:id/rsvp
+DELETE /api/experiences/:id/rsvp
+// Both require authentication and validate experience belongs to user's teams
 ```
 
 ### Admin
@@ -614,26 +743,57 @@ CELERYBEAT_SCHEDULE = {
 
 ### Cache Layers
 
-| Data Type | Storage | TTL | Invalidation |
-|-----------|---------|-----|--------------|
-| Live scores | Redis | 15-30s | Game final |
-| Historical scores | Redis | 24h | Never |
-| Articles (raw) | Redis | 1h | Source update |
-| BM25 indexes | Memory-mapped files | Persistent | New documents |
-| Classifications | PostgreSQL/MemStorage | Persistent | Manual correction |
-| AI summaries | Redis | 10min | Breaking news, new game |
-| Team rankings | Redis | 5min | New articles |
+**All caching is team-specific to ensure proper data isolation**
 
-### Cache Keys
+| Data Type | Storage | TTL | Invalidation | Team Filtering |
+|-----------|---------|-----|--------------|----------------|
+| Live scores | Redis | 15-30s | Game final | Per team |
+| Historical scores | Redis | 24h | Never | Per team |
+| Articles (raw) | Redis | 1h | Source update | Per team association |
+| BM25 indexes | Memory-mapped files | Persistent | New documents | Separate index per team |
+| Classifications | PostgreSQL/MemStorage | Persistent | Manual correction | Per team-article pair |
+| AI summaries | Redis | 10min | Breaking news, new game | **Per team** (not per user) |
+| Team rankings | Redis | 5min | New articles | Per team |
+| Sport overview | Redis | 15min | New trending news | Per sport (no team) |
+
+### Cache Keys (Team-Based)
 
 ```typescript
 const CACHE_KEYS = {
-  liveScore: (gameId: string) => `score:live:${gameId}`,
-  teamSummary: (teamId: string, hash: string) => `summary:${teamId}:${hash}`,
-  bm25Ranking: (teamId: string, category: string) => `rank:${teamId}:${category}`,
+  // Scores - team specific
+  liveScore: (teamId: string) => `score:live:team:${teamId}`,
+  teamSchedule: (teamId: string) => `score:schedule:team:${teamId}`,
+  
+  // Scores - sport overview (no team)
+  sportFeaturedGames: (sport: string) => `score:featured:sport:${sport}`,
+  
+  // Summaries - per team (shared across users)
+  teamSummary: (teamId: string, contextHash: string) => `summary:team:${teamId}:${contextHash}`,
+  
+  // Summaries - sport overview
+  sportSummary: (sport: string, contextHash: string) => `summary:sport:${sport}:${contextHash}`,
+  
+  // News - per team
+  teamNews: (teamId: string, category: string) => `news:team:${teamId}:${category}`,
+  bm25Ranking: (teamId: string, category: string) => `rank:team:${teamId}:${category}`,
+  
+  // News - sport overview
+  sportNews: (sport: string) => `news:sport:${sport}:trending`,
+  
+  // Experiences - per team
+  teamExperiences: (teamId: string, location: string) => `exp:team:${teamId}:${location}`,
+  
+  // Deduplication (global)
   articleFingerprint: (url: string) => `fingerprint:${url}`,
 };
 ```
+
+### Team Isolation Guarantee
+
+**Critical:** Cache keys MUST include team identifier to prevent cross-user data leakage:
+- ✅ User A (Lakers fan) and User B (Lakers fan) share cache → `summary:team:lakers:hash123`
+- ✅ User A (Lakers fan) and User C (Warriors fan) have separate caches → Different keys
+- ❌ Never use userId in cache key → Prevents cache sharing for same team
 
 ---
 
@@ -701,15 +861,29 @@ const CACHE_KEYS = {
    - User UID validation for mutations
    - Rate limiting per user
 
-2. **Cost Controls**
+2. **Team-Based Data Isolation (CRITICAL)**
+   - **Every API request validates user has access to requested team**
+   - Fetch user's teamIds from profile on each request
+   - Block requests for teams not in user's profile
+   - Audit log all team access attempts
+   - Example validation:
+   ```typescript
+   async function validateTeamAccess(userId: string, requestedTeamId: string): Promise<boolean> {
+     const userProfile = await getUserProfile(userId);
+     return userProfile.favoriteTeams.includes(requestedTeamId);
+   }
+   ```
+
+3. **Cost Controls**
    - DeepSeek API budget limits
    - Request throttling on expensive operations
    - Alert on unusual usage patterns
 
-3. **Input Validation**
+4. **Input Validation**
    - Zod schemas for all request bodies
    - SQL injection prevention
    - XSS sanitization on article content
+   - **Validate teamIds array in all requests**
 
 ---
 
@@ -863,6 +1037,195 @@ interface LogEntry {
    - ✓ Zero scraper ethics violations
    - ✓ AI costs under budget
    - ✓ All agents running on schedule
+
+---
+
+## Personalization Implementation Summary
+
+### Core Principle: Team-First Architecture
+
+**Every data operation in the system is filtered by the user's selected favorite teams.** This is not an optional feature—it's the foundational architecture of the entire platform.
+
+### Implementation Pattern
+
+```typescript
+// 1. User Context Extraction (Every Request)
+async function getUserContext(userId: string): Promise<UserContext> {
+  const profile = await storage.getUserProfile(userId);
+  return {
+    userId,
+    sport: profile.selectedSport,
+    teamIds: profile.favoriteTeams, // Array of team IDs
+  };
+}
+
+// 2. Team Filtering (Every Agent)
+async function fetchTeamData(context: UserContext) {
+  if (context.teamIds.length > 0) {
+    // Team-specific mode
+    return await fetchDataForTeams(context.teamIds);
+  } else {
+    // Sport overview mode
+    return await fetchSportOverview(context.sport);
+  }
+}
+
+// 3. Response Validation (Every Endpoint)
+function validateResponse(response: any, userTeamIds: string[]) {
+  // Ensure response only contains data for user's teams
+  const dataTeamIds = extractTeamIds(response);
+  const unauthorized = dataTeamIds.filter(id => !userTeamIds.includes(id));
+  
+  if (unauthorized.length > 0) {
+    throw new Error('Data leakage detected: Unauthorized team data in response');
+  }
+}
+```
+
+### Agent-by-Agent Filtering
+
+**Scores Agent:**
+- Input: `teamIds[]` from user context
+- Process: Fetch games where `home_team IN teamIds OR away_team IN teamIds`
+- Fallback: If `teamIds = []`, fetch featured games for sport
+- Cache: `score:live:team:${teamId}` or `score:featured:sport:${sport}`
+
+**News Agent:**
+- Input: `teamIds[]` from user context
+- Process: Query BM25 index filtered by `article.teamIds ∩ user.teamIds ≠ ∅`
+- Fallback: If `teamIds = []`, fetch trending sport news
+- Cache: `news:team:${teamId}:${category}` or `news:sport:${sport}:trending`
+
+**Classification Agent:**
+- Input: Articles already filtered by user's teams
+- Process: Classify only articles relevant to user's teams
+- Storage: Classification stored per team-article association
+
+**AI Summary Bot:**
+- Input: Top articles + scores for specific team
+- Process: Generate summary for ONE team at a time
+- Fallback: If `teamIds = []`, generate league-wide summary
+- Cache: `summary:team:${teamId}:${hash}` (shared across users of same team)
+
+**Experience Agent:**
+- Input: `teamIds[]` + user location
+- Process: Discover experiences for user's teams within radius
+- Fallback: If `teamIds = []`, show general sport events
+- Cache: `exp:team:${teamId}:${location}`
+
+### Data Flow Example
+
+**User: Lakers Fan**
+```
+1. User logs in → Firebase UID: abc123
+2. Fetch profile → { sport: 'NBA', teamIds: ['lakers'] }
+3. API Request: GET /api/dashboard/nba/lakers
+4. Header: Authorization: Bearer <firebase-token>
+
+Backend Processing:
+5. Extract user from token → UID: abc123
+6. Fetch user context → { sport: 'NBA', teamIds: ['lakers'] }
+7. Validate: 'lakers' in user.teamIds ✓
+8. Scores Agent: Fetch games for Lakers
+9. News Agent: Query BM25 index WHERE teamIds CONTAINS 'lakers'
+10. Summary Agent: Generate summary using Lakers data only
+11. Cache results with key: summary:team:lakers:hash456
+
+Response:
+12. Return Lakers-only data
+13. Validate: All response data belongs to Lakers ✓
+```
+
+**User: No Team Selected (Sport Overview)**
+```
+1. User logs in → Firebase UID: xyz789
+2. Fetch profile → { sport: 'NBA', teamIds: [] }
+3. API Request: GET /api/dashboard/nba
+
+Backend Processing:
+4. Extract user from token → UID: xyz789
+5. Fetch user context → { sport: 'NBA', teamIds: [] }
+6. Detect overview mode: teamIds.length === 0
+7. Scores Agent: Fetch featured NBA games (top 5)
+8. News Agent: Fetch trending NBA news (league-wide)
+9. Summary Agent: Generate NBA league summary
+10. Cache results with key: summary:sport:nba:hash789
+
+Response:
+11. Return sport-level overview data
+12. No team-specific filtering applied
+```
+
+### Security Boundaries
+
+**Critical Validations:**
+
+1. **Request Validation**
+   ```typescript
+   // Every protected endpoint
+   app.get('/api/*', authenticateFirebase, async (req, res) => {
+     const userId = req.user.uid;
+     const userContext = await getUserContext(userId);
+     
+     // Validate any teamId in request belongs to user
+     if (req.query.teamId && !userContext.teamIds.includes(req.query.teamId)) {
+       return res.status(403).json({ error: 'Unauthorized team access' });
+     }
+     
+     // Attach context to request
+     req.userContext = userContext;
+     next();
+   });
+   ```
+
+2. **Response Validation**
+   ```typescript
+   // Before sending response
+   function validateTeamData(data: any, allowedTeamIds: string[]) {
+     const dataTeamIds = extractAllTeamIds(data);
+     const unauthorized = dataTeamIds.filter(id => !allowedTeamIds.includes(id));
+     
+     if (unauthorized.length > 0) {
+       logger.error('Data leakage detected', { unauthorized, allowedTeamIds });
+       throw new Error('Security violation: Unauthorized team data');
+     }
+   }
+   ```
+
+3. **Audit Logging**
+   ```typescript
+   // Log all team access
+   logger.info('Team data access', {
+     userId: user.uid,
+     requestedTeams: extractTeamIds(request),
+     authorizedTeams: user.teamIds,
+     endpoint: request.path,
+     timestamp: new Date()
+   });
+   ```
+
+### Testing Requirements
+
+**Every feature MUST include tests for:**
+
+1. ✅ Team-specific data filtering works correctly
+2. ✅ Sport overview mode works when no team selected
+3. ✅ User cannot access data for teams not in their profile
+4. ✅ Cache isolation prevents cross-team data leakage
+5. ✅ Switching teams immediately shows correct data
+6. ✅ Multiple teams in profile shows combined data (where appropriate)
+
+### Success Validation
+
+**The system is correctly implemented when:**
+
+- User A (Lakers fan) sees ONLY Lakers content
+- User B (Warriors fan) sees ONLY Warriors content
+- User C (no team selected) sees league overview
+- User D (Lakers + Warriors fan) sees content for BOTH teams
+- No user ever sees content for teams they don't follow
+- Cache is shared efficiently for users following the same teams
+- Switching teams instantly shows correct filtered content
 
 ---
 
