@@ -46,7 +46,7 @@ export default function Settings() {
 
   // Fetch user profile
   const { data: profile, isLoading } = useQuery<UserProfile>({
-    queryKey: ["/api/profile", user?.uid],
+    queryKey: ["/api/profile"],
     enabled: !!user?.uid,
   });
 
@@ -74,7 +74,7 @@ export default function Settings() {
     if (profile?.favoriteSports && profile?.favoriteTeams) {
       profile.favoriteSports.forEach(sportName => {
         const sport = sportName as Sport;
-        const sportData = TEAMS_BY_SPORT[sport];
+        const sportData = TEAMS_BY_SPORT[sport as keyof typeof TEAMS_BY_SPORT];
         if (sportData) {
           teamsMap[sport] = (profile.favoriteTeams || []).filter(team => 
             Object.values(sportData).flat().includes(team)
@@ -98,12 +98,14 @@ export default function Settings() {
     }
 
     try {
-      await apiRequest("PATCH", `/api/profile/${user.uid}/name`, {
+      const updated = await apiRequest("PATCH", `/api/profile/${user.uid}/name`, {
         firstName: editFirstName.trim(),
         lastName: editLastName.trim(),
       });
 
-      await queryClient.invalidateQueries({ queryKey: ["/api/profile", user.uid] });
+      // Immediately update cache with server response
+      queryClient.setQueryData(["/api/profile"], updated);
+      await queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
 
       toast({
         title: "Success",
@@ -134,11 +136,13 @@ export default function Settings() {
     }
 
     try {
-      await apiRequest("PATCH", `/api/profile/${user.uid}/sports`, {
+      const updated = await apiRequest("PATCH", `/api/profile/${user.uid}/sports`, {
         favoriteSports: editSports,
       });
 
-      await queryClient.invalidateQueries({ queryKey: ["/api/profile", user.uid] });
+      // Immediately update cache with server response
+      queryClient.setQueryData(["/api/profile"], updated);
+      await queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
 
       toast({
         title: "Success",
@@ -163,11 +167,13 @@ export default function Settings() {
     const allTeams = editSports.flatMap(sport => editTeams[sport] || []);
 
     try {
-      await apiRequest("PATCH", `/api/profile/${user.uid}/teams`, {
+      const updated = await apiRequest("PATCH", `/api/profile/${user.uid}/teams`, {
         favoriteTeams: allTeams,
       });
 
-      await queryClient.invalidateQueries({ queryKey: ["/api/profile", user.uid] });
+      // Immediately update cache with server response
+      queryClient.setQueryData(["/api/profile"], updated);
+      await queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
 
       toast({
         title: "Success",
@@ -695,8 +701,11 @@ export default function Settings() {
                     </p>
                   ) : (
                     editSports.map((sport) => {
-                      const divisions = TEAMS_BY_SPORT[sport];
+                      const divisions = TEAMS_BY_SPORT[sport as keyof typeof TEAMS_BY_SPORT];
                       const sportTeams = editTeams[sport] || [];
+                      
+                      // Skip individual sports that don't have teams
+                      if (!divisions) return null;
                       
                       return (
                         <div key={sport} className="space-y-3">
@@ -730,9 +739,9 @@ export default function Settings() {
                                 />
                                 <CommandList>
                                   <CommandEmpty>No teams found.</CommandEmpty>
-                                  {Object.entries(divisions).map(([division, teams]) => (
+                                  {Object.entries(divisions).map(([division, teams]: [string, string[]]) => (
                                     <CommandGroup key={division} heading={division}>
-                                      {teams.map((team) => (
+                                      {teams.map((team: string) => (
                                         <CommandItem
                                           key={team}
                                           value={team}

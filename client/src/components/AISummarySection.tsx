@@ -34,7 +34,7 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
 
   // Fetch user profile to get favorite teams
   const { data: profile } = useQuery<UserProfile>({
-    queryKey: ["/api/profile", user?.uid],
+    queryKey: ["/api/profile"],
     enabled: !!user?.uid,
   });
 

@@ -18,16 +18,21 @@ export function SportProvider({ children }: { children: ReactNode }) {
 
   // Fetch user profile to get favorite sports
   const { data: profile } = useQuery<UserProfile>({
-    queryKey: ["/api/profile", user?.uid],
+    queryKey: ["/api/profile"],
     enabled: !!user?.uid,
   });
 
   const availableSports = (profile?.favoriteSports || []) as Sport[];
 
   // Set default sport to first favorite sport when profile loads
+  // Also reset if current sport is no longer in available sports
   useEffect(() => {
-    if (availableSports.length > 0 && !selectedSport) {
-      setSelectedSport(availableSports[0]);
+    if (availableSports.length > 0) {
+      if (!selectedSport || !availableSports.includes(selectedSport)) {
+        setSelectedSport(availableSports[0]);
+      }
+    } else {
+      setSelectedSport(null);
     }
   }, [availableSports, selectedSport]);
 

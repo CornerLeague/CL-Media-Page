@@ -21,7 +21,7 @@ function ProtectedRoute({ children, requireOnboarding = true }: { children: Reac
 
   // Fetch user profile when authenticated
   const { data: profile, isLoading: profileLoading } = useQuery<UserProfile>({
-    queryKey: ["/api/profile", user?.uid],
+    queryKey: ["/api/profile"],
     enabled: !!user?.uid,
   });
 

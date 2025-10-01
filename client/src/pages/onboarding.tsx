@@ -119,11 +119,12 @@ export default function Onboarding() {
         favoriteTeams,
       });
 
-      // Mark onboarding as complete
-      await apiRequest("PUT", `/api/profile/${user.uid}/onboarding`);
+      // Mark onboarding as complete and get updated profile
+      const updatedProfile = await apiRequest("PUT", `/api/profile/${user.uid}/onboarding`);
 
-      // Invalidate profile cache
-      await queryClient.invalidateQueries({ queryKey: ["/api/profile", user.uid] });
+      // Immediately update cache with server response
+      queryClient.setQueryData(["/api/profile"], updatedProfile);
+      await queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
 
       toast({
         title: "Success",
