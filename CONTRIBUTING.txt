@@ -1,0 +1,102 @@
+CornerLeague Media Page — Contributing Guide (Text)
+=================================================
+
+Prerequisites
+-------------
+- Node.js 20.16+ (LTS)
+- npm (or pnpm) installed
+- Optional services:
+  - PostgreSQL (for DATABASE_URL)
+  - Redis (for background job queues)
+
+Environment Setup
+-----------------
+1) Copy .env.example to .env and fill in values appropriate for your machine.
+   - DATABASE_URL: postgresql://USER:PASS@localhost:5432/cornerleague_dev
+   - REDIS_URL: redis://127.0.0.1:6379
+   - SESSION_SECRET: any random string for development
+   - JOBS_ENABLED: set to false unless you want BullMQ jobs running locally
+   - Scraper config: keep defaults or adjust rate/timeout as needed
+   - Optional: DeepSeek and Firebase credentials if you enable those features
+
+2) Install dependencies:
+   npm install
+
+Running in Development
+----------------------
+- API/Server (Express):
+  npm run dev
+  This starts the server via tsx (default port from .env PORT or 5000).
+
+- Client (Vite dev server):
+  The Vite config sets the root to ./client. From the project root, you can run:
+  npx vite
+  This launches the client dev server. In production, the client is built into dist/public via npm run build.
+
+Build & Production
+------------------
+- Build client and server:
+  npm run build
+
+- Start production server:
+  npm start
+  (Serves server from dist and client from dist/public.)
+
+Database & Migrations
+---------------------
+- Push schema to the database:
+  npm run db:push
+
+- Generate migration files (using drizzle-kit):
+  npm run db:generate
+
+- Run application migrations:
+  npm run migrate
+
+- Seed sample data:
+  npm run seed
+
+Testing
+-------
+- All tests:
+  npm test
+
+- Unit tests only:
+  npm run test:unit
+
+- Integration tests only:
+  npm run test:integration
+
+- Performance tests only:
+  npm run test:performance
+
+- Coverage:
+  npm run test:coverage
+
+- Run a specific test file (example - NBA schedule):
+  npx vitest run server/tests/unit/adapters/nbaSchedule.test.ts
+
+Path Aliases & Types
+--------------------
+- Path aliases are defined in tsconfig.json and vitest.config.ts:
+  - @server -> ./server
+  - @shared -> ./shared
+  - @ -> project root (when appropriate)
+
+- Vitest globals/types are enabled; tests reference them via tsconfig and test setup.
+
+Commit & Push Policy
+--------------------
+- .gitignore excludes all Markdown (*.md) and environment files (.env, .env.*).
+- Use .env.example to share environment variable expectations without committing sensitive values.
+
+Common Issues
+-------------
+- Path alias not resolving inside tests:
+  Ensure tsconfig.json includes server/tests in the "include" section and that vitest.config.ts resolve.alias is correct.
+
+- Missing environment variables:
+  Verify your .env is present and populated. See server/config.ts for expected keys.
+
+- Postgres or Redis not running:
+  The app can run without them in limited mode, but tests/integration and job queues may fail or be skipped.
