@@ -18,8 +18,9 @@ export function SportProvider({ children }: { children: ReactNode }) {
 
   // Fetch user profile to get favorite sports
   const { data: profile } = useQuery<UserProfile>({
-    queryKey: ["/api/profile"],
-    enabled: !!user?.uid,
+    queryKey: ["/api/profile", String(user?.id ?? "")],
+    // Gate on presence of server user
+    enabled: !!user,
   });
 
   const availableSports = (profile?.favoriteSports || []) as Sport[];

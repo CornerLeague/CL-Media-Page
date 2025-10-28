@@ -112,6 +112,10 @@ Based on uploaded reference images with precise color matching
 
   body {
     @apply bg-background text-foreground font-body antialiased;
+    /* HMR validation: subtle outline to verify live CSS reload */
+    outline: 2px solid rgba(0, 180, 0, 0.25);
+    outline-offset: -6px;
+    /* End HMR validation */
   }
 }
 

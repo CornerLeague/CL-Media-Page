@@ -1,4 +1,5 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
+import { useEffect } from "react";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -16,17 +17,47 @@ import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 import type { UserProfile } from "@shared/schema";
 
-function ProtectedRoute({ children, requireOnboarding = true }: { children: React.ReactNode; requireOnboarding?: boolean }) {
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading } = useAuth();
+  const [location] = useLocation();
 
-  // Fetch user profile when authenticated
-  const { data: profile, isLoading: profileLoading } = useQuery<UserProfile>({
-    queryKey: ["/api/profile"],
-    enabled: !!user?.uid,
+  // Fetch user profile to determine onboarding completion
+  const { data: profile, isLoading: profileLoading } = useQuery<UserProfile | null>({
+    queryKey: ["/api/profile", String(user?.id ?? "")],
+    enabled: !!user,
+    queryFn: async ({ queryKey }) => {
+      const url = queryKey.join("/") as string;
+      const res = await fetch(url, { credentials: "include" });
+      if (res.status === 404) {
+        // No profile yet
+        return null;
+      }
+      if (!res.ok) {
+        const text = (await res.text()) || res.statusText;
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return await res.json();
+    },
   });
 
-  // Show loading state while checking auth or profile
-  if (authLoading || (user && profileLoading)) {
+  // Unauthenticated handling:
+  // - For most routes, redirect to /login immediately
+  // - Specifically for /onboarding during auth loading, show a loading state instead of redirecting
+  if (!user) {
+    if (authLoading && location === "/onboarding") {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-center">
+            <p className="text-muted-foreground" data-testid="text-loading">Loading...</p>
+          </div>
+        </div>
+      );
+    }
+    return <Redirect to="/login" />;
+  }
+
+  // Show loading when authenticated user exists and profile is still loading
+  if (authLoading || profileLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -36,17 +67,17 @@ function ProtectedRoute({ children, requireOnboarding = true }: { children: Reac
     );
   }
 
-  // Redirect to login if not authenticated
-  if (!user) {
-    return <Redirect to="/login" />;
+  const needsOnboarding = !profile || profile.onboardingCompleted === false;
+
+  // Centralized routing policy:
+  // - If user needs onboarding, force them onto /onboarding from any route
+  // - If user is at /onboarding but already completed, send home
+  if (needsOnboarding && location !== "/onboarding") {
+    return <Redirect to="/onboarding" />;
   }
 
-  // If onboarding is required, check if user has completed it
-  if (requireOnboarding) {
-    // If profile doesn't exist or onboarding not completed, redirect to onboarding
-    if (!profile || !profile.onboardingCompleted) {
-      return <Redirect to="/onboarding" />;
-    }
+  if (!needsOnboarding && location === "/onboarding") {
+    return <Redirect to="/" />;
   }
 
   return <>{children}</>;
@@ -178,6 +209,21 @@ function HomePage() {
 }
 
 function App() {
+  // Removed duplicate CSRF prefetch; AuthProvider already fetches CSRF and current user on mount
+  // useEffect(() => {
+  //   fetchCsrf().catch(() => {
+  //     // Ignore initial errors; token will be re-fetched on demand
+  //   });
+  // }, []);
+
+  // HMR validation: log when App renders to verify JS module hot updates
+  if (import.meta.hot) {
+    console.debug("[HMR] App render @", new Date().toLocaleTimeString());
+  }
+
+  // Dev-only HMR badge flag
+  const isDevHmr = import.meta.env.DEV && !!import.meta.hot;
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
@@ -187,23 +233,34 @@ function App() {
               <Switch>
                 <Route path="/login" component={Login} />
                 <Route path="/onboarding">
-                  <ProtectedRoute requireOnboarding={false}>
+                  <ProtectedRoute>
                     <Onboarding />
                   </ProtectedRoute>
                 </Route>
                 <Route path="/settings">
-                  <ProtectedRoute requireOnboarding={true}>
-                    <Settings />
+                  <ProtectedRoute>
+                    <>
+                      <TopNavBar />
+                      <Settings />
+                    </>
                   </ProtectedRoute>
                 </Route>
                 <Route path="/">
-                  <ProtectedRoute requireOnboarding={true}>
+                  <ProtectedRoute>
                     <HomePage />
                   </ProtectedRoute>
                 </Route>
                 <Route component={NotFound} />
               </Switch>
               <Toaster />
+              {isDevHmr && (
+                <div
+                  className="fixed bottom-2 right-2 z-50 px-2 py-1 rounded bg-emerald-600 text-white text-xs shadow"
+                  data-testid="hmr-badge"
+                >
+                  HMR Active
+                </div>
+              )}
             </SportProvider>
           </AuthProvider>
         </TooltipProvider>

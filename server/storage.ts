@@ -19,14 +19,26 @@ import {
   type InsertRsvp,
   type UserProfile,
   type InsertUserProfile,
+  type Article,
+  type InsertArticle,
+  type BM25Index,
+  type InsertBM25Index,
+  type NewsSource,
+  type InsertNewsSource,
+  type ArticleClassification,
+  type InsertArticleClassification,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { PgStorage } from "./pgStorage";
+import { config } from "./config";
+import { db } from "./db";
 
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  getAllUsers(): Promise<User[]>;
 
   // Sessions
   createSession(session: InsertSession): Promise<Session>;
@@ -88,6 +100,36 @@ export interface IStorage {
   getUserProfile(firebaseUid: string): Promise<UserProfile | undefined>;
   createUserProfile(profile: InsertUserProfile): Promise<UserProfile>;
   updateUserProfile(firebaseUid: string, profile: Partial<InsertUserProfile>): Promise<UserProfile | undefined>;
+
+  // Articles
+  createArticle(article: InsertArticle): Promise<Article>;
+  getArticle(id: string): Promise<Article | undefined>;
+  getArticlesByTeam(teamId: string, limit?: number): Promise<Article[]>;
+  getArticlesByTeamAndCategory(teamId: string, category: string, limit?: number): Promise<Article[]>;
+  getArticleBySourceUrl(sourceUrl: string): Promise<Article | undefined>;
+  getRecentArticles(teamId: string, days: number): Promise<Article[]>;
+  updateArticle(id: string, article: Partial<Article>): Promise<Article | undefined>;
+  deleteArticle(id: string): Promise<void>;
+  getUnprocessedArticles(limit?: number): Promise<Article[]>;
+
+  // BM25 Indexes
+  getBM25IndexByTeam(teamId: string): Promise<BM25Index | undefined>;
+  createBM25Index(index: InsertBM25Index): Promise<BM25Index>;
+  updateBM25IndexStats(teamId: string, stats: Partial<BM25Index>): Promise<BM25Index | undefined>;
+
+  // News Sources
+  createNewsSource(source: InsertNewsSource): Promise<NewsSource>;
+  getNewsSource(id: string): Promise<NewsSource | undefined>;
+  getNewsSourceByName(name: string): Promise<NewsSource | undefined>;
+  getAllNewsSources(): Promise<NewsSource[]>;
+  getActiveNewsSources(): Promise<NewsSource[]>;
+  updateNewsSource(id: string, source: Partial<NewsSource>): Promise<NewsSource | undefined>;
+
+  // Article Classifications
+  createArticleClassification(classification: InsertArticleClassification): Promise<ArticleClassification>;
+  getArticleClassification(id: string): Promise<ArticleClassification | undefined>;
+  getClassificationsByArticle(articleId: string): Promise<ArticleClassification[]>;
+  deleteArticleClassification(id: string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -101,6 +143,10 @@ export class MemStorage implements IStorage {
   private experiences: Map<string, Experience>;
   private rsvps: Map<string, Rsvp>;
   private userProfiles: Map<string, UserProfile>;
+  private articles: Map<string, Article>;
+  private bm25Indexes: Map<string, BM25Index>;
+  private newsSources: Map<string, NewsSource>;
+  private articleClassifications: Map<string, ArticleClassification>;
 
   constructor() {
     this.users = new Map();
@@ -113,6 +159,10 @@ export class MemStorage implements IStorage {
     this.experiences = new Map();
     this.rsvps = new Map();
     this.userProfiles = new Map();
+    this.articles = new Map();
+    this.bm25Indexes = new Map();
+    this.newsSources = new Map();
+    this.articleClassifications = new Map();
   }
 
   // Users
@@ -124,6 +174,10 @@ export class MemStorage implements IStorage {
     return Array.from(this.users.values()).find(
       (user) => user.username === username,
     );
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return Array.from(this.users.values());
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
@@ -447,6 +501,201 @@ export class MemStorage implements IStorage {
     this.userProfiles.set(firebaseUid, updatedProfile);
     return updatedProfile;
   }
+
+  // Articles
+  async createArticle(article: InsertArticle): Promise<Article> {
+    const id = randomUUID();
+    const newArticle: Article = {
+      id,
+      ...article,
+      summary: article.summary ?? null,
+      author: article.author ?? null,
+      scrapedAt: new Date(),
+      category: article.category ?? null,
+      confidence: article.confidence ?? null,
+      wordCount: article.wordCount ?? null,
+      termFrequencies: article.termFrequencies ?? null,
+      contentHash: article.contentHash ?? null,
+      minHash: article.minHash ?? null,
+      relevanceScore: article.relevanceScore ?? null,
+      isProcessed: article.isProcessed ?? false,
+      isDeleted: article.isDeleted ?? false,
+    };
+    this.articles.set(id, newArticle);
+    return newArticle;
+  }
+
+  async getArticle(id: string): Promise<Article | undefined> {
+    return this.articles.get(id);
+  }
+
+  async getArticlesByTeam(teamId: string, limit: number = 50): Promise<Article[]> {
+    return Array.from(this.articles.values())
+      .filter((a) => a.teamId === teamId && !a.isDeleted)
+      .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime())
+      .slice(0, limit);
+  }
+
+  async getArticlesByTeamAndCategory(teamId: string, category: string, limit: number = 50): Promise<Article[]> {
+    return Array.from(this.articles.values())
+      .filter((a) => a.teamId === teamId && a.category === category && !a.isDeleted)
+      .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime())
+      .slice(0, limit);
+  }
+
+  async getArticleBySourceUrl(sourceUrl: string): Promise<Article | undefined> {
+    return Array.from(this.articles.values()).find((a) => a.sourceUrl === sourceUrl);
+  }
+
+  async getRecentArticles(teamId: string, days: number): Promise<Article[]> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    
+    return Array.from(this.articles.values())
+      .filter((a) => 
+        a.teamId === teamId && 
+        a.publishedAt >= cutoffDate && 
+        !a.isDeleted
+      )
+      .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
+  }
+
+  async updateArticle(id: string, article: Partial<Article>): Promise<Article | undefined> {
+    const existing = this.articles.get(id);
+    if (!existing) return undefined;
+
+    const updated = { ...existing, ...article, id };
+    this.articles.set(id, updated);
+    return updated;
+  }
+
+  async deleteArticle(id: string): Promise<void> {
+    const article = this.articles.get(id);
+    if (article) {
+      article.isDeleted = true;
+      this.articles.set(id, article);
+    }
+  }
+
+  async getUnprocessedArticles(limit: number = 100): Promise<Article[]> {
+    return Array.from(this.articles.values())
+      .filter((a) => !a.isProcessed && !a.isDeleted)
+      .sort((a, b) => b.scrapedAt.getTime() - a.scrapedAt.getTime())
+      .slice(0, limit);
+  }
+
+  // BM25 Indexes
+  async getBM25IndexByTeam(teamId: string): Promise<BM25Index | undefined> {
+    return Array.from(this.bm25Indexes.values()).find((idx) => idx.teamId === teamId);
+  }
+
+  async createBM25Index(index: InsertBM25Index): Promise<BM25Index> {
+    const id = randomUUID();
+    const newIndex: BM25Index = {
+      id,
+      ...index,
+      totalDocuments: index.totalDocuments ?? 0,
+      avgDocLength: index.avgDocLength ?? 0,
+      k1: index.k1 ?? '1.5',
+      b: index.b ?? '0.75',
+      lastRebuiltAt: index.lastRebuiltAt ?? null,
+      rebuildInProgress: index.rebuildInProgress ?? false,
+      avgQueryTimeMs: index.avgQueryTimeMs ?? null,
+      totalQueries: index.totalQueries ?? 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.bm25Indexes.set(id, newIndex);
+    return newIndex;
+  }
+
+  async updateBM25IndexStats(teamId: string, stats: Partial<BM25Index>): Promise<BM25Index | undefined> {
+    const existing = Array.from(this.bm25Indexes.values()).find((idx) => idx.teamId === teamId);
+    if (!existing) return undefined;
+
+    const updated = { ...existing, ...stats, updatedAt: new Date() };
+    this.bm25Indexes.set(existing.id, updated);
+    return updated;
+  }
+
+  // News Sources
+  async createNewsSource(source: InsertNewsSource): Promise<NewsSource> {
+    const id = randomUUID();
+    const newSource: NewsSource = {
+      id,
+      ...source,
+      rssUrl: source.rssUrl ?? null,
+      baseUrl: source.baseUrl ?? null,
+      selectorConfig: source.selectorConfig ?? null,
+      totalArticles: source.totalArticles ?? 0,
+      relevantArticles: source.relevantArticles ?? 0,
+      duplicateArticles: source.duplicateArticles ?? 0,
+      reliabilityScore: source.reliabilityScore ?? null,
+      isActive: source.isActive ?? true,
+      lastScrapedAt: source.lastScrapedAt ?? null,
+      lastErrorAt: source.lastErrorAt ?? null,
+      errorMessage: source.errorMessage ?? null,
+      requestsPerMinute: source.requestsPerMinute ?? 10,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.newsSources.set(id, newSource);
+    return newSource;
+  }
+
+  async getNewsSource(id: string): Promise<NewsSource | undefined> {
+    return this.newsSources.get(id);
+  }
+
+  async getNewsSourceByName(name: string): Promise<NewsSource | undefined> {
+    return Array.from(this.newsSources.values()).find((s) => s.name === name);
+  }
+
+  async getAllNewsSources(): Promise<NewsSource[]> {
+    return Array.from(this.newsSources.values());
+  }
+
+  async getActiveNewsSources(): Promise<NewsSource[]> {
+    return Array.from(this.newsSources.values()).filter((s) => s.isActive);
+  }
+
+  async updateNewsSource(id: string, source: Partial<NewsSource>): Promise<NewsSource | undefined> {
+    const existing = this.newsSources.get(id);
+    if (!existing) return undefined;
+
+    const updated = { ...existing, ...source, updatedAt: new Date() };
+    this.newsSources.set(id, updated);
+    return updated;
+  }
+
+  // Article Classifications
+  async createArticleClassification(classification: InsertArticleClassification): Promise<ArticleClassification> {
+    const id = randomUUID();
+    const newClassification: ArticleClassification = {
+      id,
+      ...classification,
+      classifiedAt: new Date(),
+      classifierVersion: classification.classifierVersion ?? null,
+      reasoning: classification.reasoning ?? null,
+      keywords: classification.keywords ?? null,
+    };
+    this.articleClassifications.set(id, newClassification);
+    return newClassification;
+  }
+
+  async getArticleClassification(id: string): Promise<ArticleClassification | undefined> {
+    return this.articleClassifications.get(id);
+  }
+
+  async getClassificationsByArticle(articleId: string): Promise<ArticleClassification[]> {
+    return Array.from(this.articleClassifications.values())
+      .filter((c) => c.articleId === articleId)
+      .sort((a, b) => b.classifiedAt.getTime() - a.classifiedAt.getTime());
+  }
+
+  async deleteArticleClassification(id: string): Promise<void> {
+    this.articleClassifications.delete(id);
+  }
 }
 
-export const storage = new MemStorage();
+export const storage: IStorage = config.databaseUrl && db ? new PgStorage() : new MemStorage();

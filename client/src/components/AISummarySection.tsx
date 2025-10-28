@@ -34,8 +34,9 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
 
   // Fetch user profile to get favorite teams
   const { data: profile } = useQuery<UserProfile>({
-    queryKey: ["/api/profile"],
-    enabled: !!user?.uid,
+    queryKey: ["/api/profile", String(user?.id ?? "")],
+    // Temporarily enable only on presence of server user
+    enabled: !!user,
   });
 
   // Get all the user's favorite teams for the selected sport
@@ -75,8 +76,8 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
     // For individual sports, just show the sport name
     displayTeamName = selectedSport;
   } else {
-    // For team sports, show the team name
-    const currentFullTeamName = favoriteTeams[currentTeamIndex] || teamDashboard?.team.name || selectedSport || 'TEAM';
+    // For team sports, prefer selected sport when no favorite team is chosen
+    const currentFullTeamName = favoriteTeams[currentTeamIndex] || selectedSport || teamDashboard?.team.name || 'TEAM';
     // Extract just the team name (last word) without the city
     displayTeamName = currentFullTeamName.split(' ').pop() || currentFullTeamName;
   }
@@ -131,9 +132,9 @@ export const AISummarySection = ({ teamDashboard, isLoading, error }: AISummaryS
               </Button>
             )}
             
-            <h1 className="font-display font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl text-foreground leading-tight">
+              <h1 className="font-display font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl text-foreground leading-tight">
               <span className="block text-secondary dark:text-foreground mt-2 text-7xl sm:text-7xl md:text-8xl lg:text-9xl xl:text-9xl font-bold" data-testid="text-team-name">
-                {displayTeamName.toUpperCase()}
+                {String(displayTeamName || 'TEAM').toUpperCase()}
               </span>
             </h1>
 

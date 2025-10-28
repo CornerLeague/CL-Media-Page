@@ -4,7 +4,7 @@ import path from "path";
 import { createServer as createViteServer, createLogger } from "vite";
 import { type Server } from "http";
 import viteConfig from "../vite.config";
-import { nanoid } from "nanoid";
+import { config } from "./config";
 
 const viteLogger = createLogger();
 
@@ -22,25 +22,45 @@ export function log(message: string, source = "express") {
 export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
     middlewareMode: true,
-    hmr: { server },
-    allowedHosts: true as const,
+    hmr: false,
   };
 
   const vite = await createViteServer({
     ...viteConfig,
     configFile: false,
-    customLogger: {
-      ...viteLogger,
-      error: (msg, options) => {
-        viteLogger.error(msg, options);
-        process.exit(1);
-      },
-    },
+    // Use default Vite logger; do not force process exit on errors in development
+    // customLogger: viteLogger,
     server: serverOptions,
     appType: "custom",
   });
 
+  // Respond to Vite client connectivity pings immediately to avoid aborted fetches
+  app.use((req, res, next) => {
+    const accept = String(req.headers["accept"] ?? "");
+    const isPing = accept.includes("text/x-vite-ping") || accept.includes("text/x-vite-dev-server-ping");
+    if (isPing && req.method === "HEAD") {
+      // Instrumentation to verify handling path
+      try {
+        log(`vite-ping: method=${req.method} url=${req.url} accept=${accept}`, "vite");
+      } catch {}
+
+      // For HEAD, send 204 with no body to avoid chunked encoding aborts
+      res.status(204)
+        .set({
+          "Content-Type": "text/x-vite-ping",
+          "Content-Length": "0",
+          "X-Vite-Ping": "1",
+        })
+        .end();
+      return;
+    }
+
+    // Let normal GETs fall through to Vite middlewares
+    next();
+  });
+
   app.use(vite.middlewares);
+
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
 
@@ -52,13 +72,12 @@ export async function setupVite(app: Express, server: Server) {
         "index.html",
       );
 
-      // always reload the index.html file from disk incase it changes
+      // Serve index.html as-is without dynamic query versioning to avoid HMR full reload loops
+      // let template = await fs.promises.readFile(clientTemplate, "utf-8");
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
-      template = template.replace(
-        `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid()}"`,
-      );
-      const page = await vite.transformIndexHtml(url, template);
+      let page = await vite.transformIndexHtml(url, template);
+      // Strip Vite HMR client script to fully disable reload cycles
+      page = page.replace(/<script[^>]*src="\/@vite\/client"[^>]*><\/script>/i, "");
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);

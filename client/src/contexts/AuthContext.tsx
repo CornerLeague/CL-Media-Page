@@ -1,11 +1,16 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import { queryClient } from '@/lib/queryClient';
+import { apiRequest } from '@/lib/queryClient';
+import { fetchCsrf } from '@/lib/csrf';
+
+interface AuthUser {
+  id: number;
+  username: string;
+}
 
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   loading: boolean;
+  refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -24,28 +29,37 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      // Clear profile cache on auth state changes to prevent cross-user contamination
-      queryClient.removeQueries({ queryKey: ["/api/profile"] });
-      
-      setUser(user);
+  const refresh = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data);
+      } else {
+        setUser(null);
+      }
+    } catch {
+      setUser(null);
+    } finally {
       setLoading(false);
-    });
+    }
+  };
 
-    return unsubscribe;
+  useEffect(() => {
+    // Fetch CSRF token and current user on app start
+    fetchCsrf().finally(() => {
+      refresh();
+    });
   }, []);
 
   const signOut = async () => {
     try {
-      // Clear profile cache before signing out
-      queryClient.removeQueries({ queryKey: ["/api/profile"] });
-      
-      await firebaseSignOut(auth);
-      // Redirect to login after sign out
+      await apiRequest('POST', '/api/auth/logout');
+      setUser(null);
       window.location.href = '/login';
     } catch (error) {
       console.error('Error signing out:', error);
@@ -56,6 +70,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const value = {
     user,
     loading,
+    refresh,
     signOut,
   };
 

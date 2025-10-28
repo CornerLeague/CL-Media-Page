@@ -4,3 +4,10 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+# Ignore documentation and environment files per repo policy
+*.md
+*.MD
+*.markdown
+.env
+.env.*
+!.env.example

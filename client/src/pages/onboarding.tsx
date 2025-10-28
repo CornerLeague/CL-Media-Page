@@ -89,7 +89,7 @@ export default function Onboarding() {
 
   // Submit onboarding data
   const handleFinish = async () => {
-    if (!user?.uid) {
+    if (!user) {
       toast({
         title: "Error",
         description: "User not authenticated.",
@@ -101,30 +101,22 @@ export default function Onboarding() {
     setIsSubmitting(true);
 
     try {
-      // Split displayName into firstName and lastName
-      const displayName = user.displayName || "";
-      const nameParts = displayName.trim().split(" ");
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.slice(1).join(" ") || "";
-
       // Flatten selectedTeams into a single array
       const favoriteTeams = orderedSports.flatMap((sport) => selectedTeams[sport] ?? []);
 
       // Create profile with favorite sports and teams
       await apiRequest("POST", "/api/profile", {
-        firebaseUid: user.uid,
-        firstName,
-        lastName,
+        firebaseUid: String(user.id),
         favoriteSports: orderedSports,
         favoriteTeams,
       });
 
       // Mark onboarding as complete and get updated profile
-      const response = await apiRequest("PUT", `/api/profile/${user.uid}/onboarding`);
+      const response = await apiRequest("PUT", `/api/profile/${String(user.id)}/onboarding`);
       const updatedProfile = await response.json();
 
       // Immediately update cache with server response
-      queryClient.setQueryData(["/api/profile"], updatedProfile);
+      queryClient.setQueryData(["/api/profile", String(user.id)], updatedProfile);
 
       toast({
         title: "Success",
