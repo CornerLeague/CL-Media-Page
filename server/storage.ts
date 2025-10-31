@@ -66,7 +66,8 @@ export interface IStorage {
   // Games (cached)
   createGame(game: InsertGame): Promise<Game>;
   getGame(id: string): Promise<Game | undefined>;
-  getGamesByTeamId(teamId: string, limit?: number): Promise<Game[]>;
+  getGamesByTeamId(teamId: string, limit?: number, startDate?: Date, endDate?: Date): Promise<Game[]>;
+  getGamesByTeamIds(teamIds: string[], limit?: number, startDate?: Date, endDate?: Date): Promise<Game[]>;
   deleteOldGames(olderThan: Date): Promise<void>;
 
   // Updates
@@ -312,9 +313,26 @@ export class MemStorage implements IStorage {
     return this.games.get(id);
   }
 
-  async getGamesByTeamId(teamId: string, limit: number = 10): Promise<Game[]> {
-    return Array.from(this.games.values())
-      .filter((g) => g.homeTeamId === teamId || g.awayTeamId === teamId)
+  async getGamesByTeamId(teamId: string, limit: number = 10, startDate?: Date, endDate?: Date): Promise<Game[]> {
+    let items = Array.from(this.games.values())
+      .filter((g) => g.homeTeamId === teamId || g.awayTeamId === teamId);
+    if (startDate) items = items.filter((g) => g.startTime >= startDate);
+    if (endDate) items = items.filter((g) => g.startTime <= endDate);
+    return items
+      .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
+      .slice(0, limit);
+  }
+
+  async getGamesByTeamIds(teamIds: string[], limit: number = 10, startDate?: Date, endDate?: Date): Promise<Game[]> {
+    const teamSet = new Set((teamIds || []).map((t) => String(t)));
+    let items = Array.from(this.games.values())
+      .filter((g) => teamSet.size === 0 || teamSet.has(g.homeTeamId) || teamSet.has(g.awayTeamId));
+    if (startDate) items = items.filter((g) => g.startTime >= startDate);
+    if (endDate) items = items.filter((g) => g.startTime <= endDate);
+    // Deduplicate by id in case of duplicates
+    const seen = new Set<string>();
+    items = items.filter((g) => (seen.has(g.id) ? false : (seen.add(g.id), true)));
+    return items
       .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
       .slice(0, limit);
   }

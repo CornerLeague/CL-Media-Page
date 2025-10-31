@@ -478,7 +478,7 @@ describe('Performance Benchmarks - End-to-End Pipeline', () => {
       // 6. Update as processed
       await storage.updateArticle(article.id, {
         isProcessed: true,
-        minHashSignature: JSON.stringify(signature.hashes),
+        minHash: JSON.stringify(signature.hashes),
       });
     });
 
@@ -511,7 +511,7 @@ describe('Performance Benchmarks - End-to-End Pipeline', () => {
 
         await storage.updateArticle(article.id, {
           isProcessed: true,
-          minHashSignature: JSON.stringify(signature.hashes),
+          minHash: JSON.stringify(signature.hashes),
         });
       }
     });

@@ -42,3 +42,9 @@ export function broadcast(type: string, payload: any) {
     }
   });
 }
+
+export function getWsStats(): { ready: boolean; clients: number; path: string } {
+  const ready = !!wss;
+  const clients = wss ? wss.clients.size : 0;
+  return { ready, clients, path: "/ws" };
+}

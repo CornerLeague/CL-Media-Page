@@ -4,6 +4,7 @@ import { ethicalFetcher } from '../../utils/scraping/fetcher';
 import { HTMLParser } from '../../utils/scraping/parser';
 import { TeamMapper } from '../../utils/scraping/teamMapper';
 import { logger } from '../../logger';
+import { buildStableGameId } from './idUtils';
 
 /**
  * NFLAdapter
@@ -199,8 +200,9 @@ export class NFLAdapter implements IScoreSource {
             }
           }
 
+          const scheduledStart = this.extractScheduledStart(statusText);
           games.push({
-            gameId: `NFL_ESPN_${awayTeamId}_${homeTeamId}_${Date.now()}`,
+            gameId: buildStableGameId(this.sport, 'ESPN', awayTeamId, homeTeamId, scheduledStart),
             homeTeamId,
             awayTeamId,
             homePts: homeScore,
@@ -208,7 +210,7 @@ export class NFLAdapter implements IScoreSource {
             status: this.mapStatus(statusText),
             period: this.extractPeriod(statusText),
             timeRemaining: this.extractTimeRemaining(statusText),
-            startTime: new Date(), // TODO: Parse actual start time from page
+            startTime: scheduledStart || new Date(),
             source: 'ESPN.com',
           });
         } catch (err) {
@@ -262,8 +264,9 @@ export class NFLAdapter implements IScoreSource {
             }
           }
 
+          const scheduledStart = this.extractScheduledStart(statusText);
           games.push({
-            gameId: `NFL_CBS_${awayTeamId}_${homeTeamId}_${Date.now()}`,
+            gameId: buildStableGameId(this.sport, 'CBS', awayTeamId, homeTeamId, scheduledStart),
             homeTeamId,
             awayTeamId,
             homePts: homeScore,
@@ -271,7 +274,7 @@ export class NFLAdapter implements IScoreSource {
             status: this.mapStatus(statusText),
             period: this.extractPeriod(statusText),
             timeRemaining: this.extractTimeRemaining(statusText),
-            startTime: new Date(),
+            startTime: scheduledStart || new Date(),
             source: 'CBS Sports',
           });
         } catch (err) {
@@ -357,5 +360,40 @@ export class NFLAdapter implements IScoreSource {
     // Match patterns like "12:34", "5:32", "0:03"
     const match = statusText.match(/(\d{1,2}:\d{2})/);
     return match ? match[1] : undefined;
+  }
+
+  /**
+   * Extract scheduled start time from status text (e.g., "1:00 PM", "Sun 4:25 PM ET", "Tomorrow 8:20 PM")
+   * Returns a Date constructed for today (or tomorrow) in local timezone.
+   */
+  private extractScheduledStart(statusText: string, baseDate?: Date): Date | undefined {
+    const text = statusText || '';
+
+    // Look for explicit AM/PM time-of-day (scheduled)
+    const m = text.match(/\b(\d{1,2}):(\d{2})\s*(AM|PM)\b/i);
+    if (!m) return undefined;
+
+    let hour = parseInt(m[1], 10);
+    const minute = parseInt(m[2], 10);
+    const ampm = m[3].toUpperCase();
+
+    if (ampm === 'PM' && hour !== 12) hour += 12;
+    if (ampm === 'AM' && hour === 12) hour = 0;
+
+    const base = baseDate || new Date();
+    const isTomorrow = /\btomorrow\b/i.test(text);
+    const dayOffset = isTomorrow ? 1 : 0;
+
+    const start = new Date(
+      base.getFullYear(),
+      base.getMonth(),
+      base.getDate() + dayOffset,
+      hour,
+      minute,
+      0,
+      0
+    );
+
+    return isNaN(start.getTime()) ? undefined : start;
   }
 }

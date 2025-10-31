@@ -72,7 +72,6 @@ describe('Article Pipeline - Complete Workflow', () => {
     // Step 5: Add to BM25 index
     bm25Index.addDocument({
       id: article.id,
-      title: article.title,
       content: article.content,
       teamId: article.teamId,
     });
@@ -99,7 +98,7 @@ describe('Article Pipeline - Complete Workflow', () => {
     const updated = await storage.updateArticle(article.id, {
       isProcessed: true,
       contentHash,
-      minHashSignature: JSON.stringify(signature.hashes),
+      minHash: JSON.stringify(signature.hashes),
     });
 
     expect(updated?.isProcessed).toBe(true);
@@ -137,21 +136,20 @@ describe('Article Pipeline - Complete Workflow', () => {
     const similarity = minHash.similarity(originalSignature, duplicateSignature);
     expect(similarity).toBeGreaterThan(0.85); // High similarity threshold
 
-    // Should mark as duplicate (not index it)
+    // Should mark as deleted (duplicate; not index it)
     if (similarity > 0.85) {
       await storage.updateArticle(duplicate.id, {
         isProcessed: true,
-        isDuplicate: true,
+        isDeleted: true,
       });
     }
 
     const updatedDuplicate = await storage.getArticle(duplicate.id);
-    expect(updatedDuplicate?.isDuplicate).toBe(true);
+    expect(updatedDuplicate?.isDeleted).toBe(true);
 
     // Original should be indexed, duplicate should not
     bm25Index.addDocument({
       id: original.id,
-      title: original.title,
       content: original.content,
       teamId: original.teamId,
     });
@@ -258,14 +256,12 @@ describe('Article Pipeline - Complete Workflow', () => {
 
     lakersIndex.addDocument({
       id: lakersArticle.id,
-      title: lakersArticle.title,
       content: lakersArticle.content,
       teamId: lakersArticle.teamId,
     });
 
     celticsIndex.addDocument({
       id: celticsArticle.id,
-      title: celticsArticle.title,
       content: celticsArticle.content,
       teamId: celticsArticle.teamId,
     });
@@ -344,7 +340,6 @@ describe('Article Pipeline - Batch Processing', () => {
         // Add to BM25 index
         bm25Index.addDocument({
           id: article.id,
-          title: article.title,
           content: article.content,
           teamId: article.teamId,
         });
@@ -352,7 +347,7 @@ describe('Article Pipeline - Batch Processing', () => {
         // Mark as processed
         await storage.updateArticle(article.id, {
           isProcessed: true,
-          minHashSignature: JSON.stringify(signature.hashes),
+          minHash: JSON.stringify(signature.hashes),
         });
       }
     });
@@ -397,7 +392,7 @@ describe('Article Pipeline - Batch Processing', () => {
           duplicateCount++;
           // Mark second article as duplicate
           await storage.updateArticle(articles[j].id, {
-            isDuplicate: true,
+            isDeleted: true,
           });
         }
       }
@@ -445,14 +440,12 @@ describe('Article Pipeline - Real-World Scenarios', () => {
     // Process both
     bm25Index.addDocument({
       id: shortArticle.id,
-      title: shortArticle.title,
       content: shortArticle.content,
       teamId: shortArticle.teamId,
     });
 
     bm25Index.addDocument({
       id: longArticle.id,
-      title: longArticle.title,
       content: longArticle.content,
       teamId: longArticle.teamId,
     });
@@ -509,7 +502,6 @@ describe('Article Pipeline - Real-World Scenarios', () => {
 
       bm25Index.addDocument({
         id: article.id,
-        title: article.title,
         content: article.content,
         teamId: article.teamId,
       });

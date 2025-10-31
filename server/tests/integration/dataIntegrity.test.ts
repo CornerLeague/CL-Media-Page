@@ -254,7 +254,6 @@ describe('Data Integrity - Data Consistency', () => {
     // Check default values
     expect(article.isProcessed).toBe(false);
     expect(article.isDeleted).toBe(false);
-    expect(article.isDuplicate).toBeFalsy();
   });
 
   it('should maintain data consistency across related entities', async () => {

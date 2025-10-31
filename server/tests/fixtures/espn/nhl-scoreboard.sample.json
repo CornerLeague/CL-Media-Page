@@ -1,0 +1,66 @@
+{
+  "events": [
+    {
+      "id": "401802500",
+      "date": "2025-01-30T00:00Z",
+      "competitions": [
+        {
+          "date": "2025-01-30T00:00Z",
+          "status": { "type": { "state": "pre", "detail": "7:00 PM ET" } },
+          "competitors": [
+            {
+              "homeAway": "away",
+              "score": "0",
+              "team": {
+                "abbreviation": "NYR",
+                "shortDisplayName": "Rangers",
+                "name": "Rangers"
+              }
+            },
+            {
+              "homeAway": "home",
+              "score": "0",
+              "team": {
+                "abbreviation": "BOS",
+                "shortDisplayName": "Bruins",
+                "name": "Bruins"
+              }
+            }
+          ]
+        }
+      ],
+      "status": { "type": { "state": "pre", "detail": "7:00 PM ET" } }
+    },
+    {
+      "id": "401802501",
+      "date": "2025-01-30T02:00Z",
+      "competitions": [
+        {
+          "date": "2025-01-30T02:00Z",
+          "status": { "type": { "state": "in", "detail": "2nd Period, 12:34" } },
+          "competitors": [
+            {
+              "homeAway": "away",
+              "score": "1",
+              "team": {
+                "abbreviation": "VGK",
+                "shortDisplayName": "Golden Knights",
+                "name": "Golden Knights"
+              }
+            },
+            {
+              "homeAway": "home",
+              "score": "2",
+              "team": {
+                "abbreviation": "LAK",
+                "shortDisplayName": "Kings",
+                "name": "Kings"
+              }
+            }
+          ]
+        }
+      ],
+      "status": { "type": { "state": "in", "detail": "2nd Period, 12:34" } }
+    }
+  ]
+}

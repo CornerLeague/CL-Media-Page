@@ -3,7 +3,7 @@ import { SportAdapterFactory } from "../agents/adapters";
 import { sendFriendlyDbError } from "../routes";
 import { queues } from "../jobs/queues";
 import { config } from "../config";
-import { defaultJobOptions } from "../jobs/workers";
+import { defaultJobOptions, getScoresIngestHealth } from "../jobs/workers";
 
 import type { Express } from "express";
 
@@ -105,6 +105,30 @@ export function attachDevAgentRoutes(app: Express) {
       });
     } catch (err) {
       return await sendFriendlyDbError(res, err, "listScoresIngestJobs");
+    }
+  });
+
+  // Lightweight jobs health summary (dev only)
+  app.get("/api/dev/jobs/health", async (_req, res) => {
+    try {
+      if (!config.jobsEnabled) {
+        return res.status(400).json({ error: "Jobs are disabled by config" });
+      }
+      const counts = await queues.scoresIngest.getJobCounts("waiting", "active", "completed", "failed", "delayed");
+      let repeatables = 0;
+      try {
+        const reps = await queues.scoresIngest.getRepeatableJobs();
+        repeatables = reps.length;
+      } catch {}
+      const health = getScoresIngestHealth();
+      return res.json({
+        queue: { counts, repeatables },
+        scoresIngest: health,
+        lastRunAt: health.lastCompletedAt ?? null,
+        lastFailAt: health.lastFailedAt ?? null,
+      });
+    } catch (err) {
+      return await sendFriendlyDbError(res, err, "jobsHealth");
     }
   });
 }

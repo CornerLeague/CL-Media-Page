@@ -6,15 +6,150 @@ import { hashPassword } from "./auth";
 import rateLimit from "express-rate-limit";
 import csurf from "csurf";
 import { storage } from "./storage";
+import { db } from "./db";
+import { teams } from "@shared/schema";
+import { createRedis, connectRedis, closeRedis } from "./jobs/redis";
+import * as queuesMod from "./jobs/queues";
+import { getWsStats } from "./ws";
+import { withSource } from "./logger";
+import { performance } from "perf_hooks";
 import { insertUserProfileSchema } from "@shared/schema";
 import { insertUpdateSchema, insertExperienceSchema, insertRsvpSchema, insertTeamSchema, insertGameSchema, insertUserSchema } from "@shared/schema";
+import { authenticateFirebase } from "./middleware/authenticateFirebase";
+import { loadUserContext } from "./middleware/loadUserContext";
+import { validateTeamAccess } from "./middleware/teamAccessGuard";
+import { validateScoresQuery, validateScheduleQuery, validateBoxScoreParams } from "./middleware/validateRequest";
+import { config } from "./config";
+import { metrics } from "./metrics";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Basic rate limits for auth endpoints
   const authLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });
   const loginLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
+  // Per-IP limiter for GET endpoints
+  const apiGetLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false });
   // Use cookie-based CSRF secret to avoid session secret rotation issues
   const csrfProtection = csurf({ cookie: true });
+
+  // Dev-only Prometheus metrics endpoint
+  app.get("/metrics", async (_req, res) => {
+    if (!config.isDev) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    try {
+      const content = await metrics.getMetricsContent();
+      res.setHeader("Content-Type", metrics.register.contentType);
+      return res.send(content);
+    } catch (err) {
+      return res.status(500).json({ error: "Metrics error" });
+    }
+  });
+
+  // Health check endpoint
+  app.get("/api/healthz", async (_req, res) => {
+    const start = performance.now();
+    const log = withSource("healthz");
+    let version: string | null = null;
+    try {
+      // Resolve app version from package.json safely in ESM
+      const fs = await import("fs");
+      const path = await import("path");
+      const pkgPath = path.resolve(process.cwd(), "package.json");
+      const raw = fs.readFileSync(pkgPath, "utf-8");
+      version = JSON.parse(raw)?.version ?? null;
+    } catch {}
+
+    // DB check: if Database URL present, run a lightweight select; else consider MemStorage OK
+    let dbOk = true;
+    let dbLatencyMs: number | null = null;
+    let dbMessage: string | null = null;
+    if (config.databaseUrl && db) {
+      const t0 = performance.now();
+      try {
+        await db.select().from(teams).limit(1);
+        dbLatencyMs = Math.round(performance.now() - t0);
+      } catch (err: any) {
+        dbOk = false;
+        dbLatencyMs = Math.round(performance.now() - t0);
+        dbMessage = String(err?.message ?? "db error");
+      }
+    } else {
+      dbOk = true;
+      dbMessage = "mem-storage";
+    }
+
+    // Redis check: only attempt if Redis URL is configured
+    let redisOk = true;
+    let redisLatencyMs: number | null = null;
+    let redisMessage: string | null = null;
+    if (config.redisUrl) {
+      const t0 = performance.now();
+      const client = createRedis();
+      try {
+        await connectRedis(client);
+        try { await client.ping(); } catch {}
+        redisLatencyMs = Math.round(performance.now() - t0);
+        await closeRedis(client);
+      } catch (err: any) {
+        redisOk = false;
+        redisLatencyMs = Math.round(performance.now() - t0);
+        redisMessage = String(err?.message ?? "redis error");
+        try { await closeRedis(client); } catch {}
+      }
+    } else {
+      redisOk = true;
+      redisMessage = "not-configured";
+    }
+
+    // Jobs: provide a lightweight summary when enabled
+    let jobsOk = true;
+    let jobsCounts: any = null;
+    let jobsRepeatables = 0;
+    let jobsMessage: string | null = null;
+    if (config.jobsEnabled) {
+      try {
+      jobsCounts = await queuesMod.queues.scoresIngest.getJobCounts("waiting", "active", "completed", "failed", "delayed");
+        try {
+      const reps = await queuesMod.queues.scoresIngest.getRepeatableJobs();
+          jobsRepeatables = Array.isArray(reps) ? reps.length : 0;
+        } catch {}
+      } catch (err: any) {
+        jobsOk = false;
+        jobsMessage = String(err?.message ?? "jobs error");
+      }
+    } else {
+      jobsOk = true;
+      jobsMessage = "disabled";
+    }
+
+    // WebSocket service
+    const ws = getWsStats();
+    const wsOk = ws.ready;
+
+    // Aggregate status
+    let status: "ok" | "degraded" | "down" = "ok";
+    if (!dbOk) status = "down";
+    else if (!redisOk || !jobsOk || !wsOk) status = "degraded";
+
+    const durationMs = Math.round(performance.now() - start);
+    const body = {
+      status,
+      version,
+      duration_ms: durationMs,
+      checks: {
+        db: { ok: dbOk, latency_ms: dbLatencyMs, message: dbMessage },
+        redis: { ok: redisOk, latency_ms: redisLatencyMs, message: redisMessage },
+        jobs: { ok: jobsOk, counts: jobsCounts, repeatables: jobsRepeatables, message: jobsMessage },
+        ws: { ok: wsOk, clients: ws.clients, path: ws.path },
+      },
+    };
+
+    try {
+      if (status !== "ok") log.warn({ status, body }, "healthz degraded");
+    } catch {}
+
+    return res.status(200).json(body);
+  });
 
   // Session smoke test: increments a counter stored in the session
   app.get("/api/session-ping", async (req, res) => {
@@ -297,11 +432,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/dev/games", async (_req, res) => {
     try {
       const allTeams = await storage.getAllTeams();
-      const perTeam = await Promise.all(allTeams.map((t) => storage.getGamesByTeamId(t.id, 50)));
-      const games = perTeam.flat();
-      const seen = new Set<string>();
-      const uniqueGames = games.filter((g) => (seen.has(g.id) ? false : (seen.add(g.id), true)));
-      return res.json(uniqueGames);
+      const ids = allTeams.map((t) => t.id);
+      const games = await storage.getGamesByTeamIds(ids, Math.min(500, ids.length * 10));
+      return res.json(games);
     } catch (error) {
       console.error("Error listing games:", error);
       return res.status(500).json({ error: "Internal server error" });
@@ -509,26 +642,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // --- Phase 3: Scores ---
-  app.get("/api/scores", async (req, res) => {
+  app.get(
+    "/api/scores",
+    apiGetLimiter,
+    authenticateFirebase,
+    validateScoresQuery,
+    loadUserContext,
+    validateTeamAccess,
+    async (req, res) => {
     try {
-      const { teamIds, page = "1", pageSize = "10" } = req.query as Record<string, string | string[]>;
+      const { page = "1", pageSize = "10" } = req.query as Record<string, string | string[]>;
       const p = Math.max(1, parseInt(String(page)) || 1);
       const ps = Math.max(1, Math.min(100, parseInt(String(pageSize)) || 10));
-      const teamIdsArr = Array.isArray(teamIds) ? teamIds : teamIds ? [String(teamIds)] : [];
+      const teamIdsArr = Array.isArray(req.access?.authorizedTeamIds)
+        ? req.access!.authorizedTeamIds
+        : [];
+      const sport = req.access?.sport ?? null;
+      const leagueFilter = sport ? String(sport).toUpperCase() : null;
+
+      const startDateStr = req.validated?.query?.startDate;
+      const endDateStr = req.validated?.query?.endDate;
+      let startDate = startDateStr ? new Date(String(startDateStr)) : undefined;
+      let endDate = endDateStr ? new Date(String(endDateStr)) : undefined;
+      // Default window for recent/live scores when not provided: last 48h to now+1h
+      if (!startDate) {
+        startDate = new Date(Date.now() - 48 * 60 * 60 * 1000);
+      }
+      if (!endDate) {
+        endDate = new Date(Date.now() + 1 * 60 * 60 * 1000);
+      }
+      const baseLimit = Math.min(50, Number(req.validated?.query?.limit ?? 10));
 
       let games = [] as Awaited<ReturnType<typeof storage.getGamesByTeamId>>;
       if (teamIdsArr.length > 0) {
-        const perTeam = await Promise.all(teamIdsArr.map((tid) => storage.getGamesByTeamId(String(tid), 100)));
-        games = perTeam.flat();
+        // If sport provided, restrict requested teams to that league
+        let filteredTeamIds = teamIdsArr;
+        if (leagueFilter) {
+          const leagueTeams = await storage.getTeamsByLeague(leagueFilter);
+          const allowedSet = new Set(leagueTeams.map((t) => t.id));
+          filteredTeamIds = teamIdsArr.filter((tid) => allowedSet.has(String(tid)));
+        }
+        const overallLimit = Math.min(500, baseLimit * filteredTeamIds.length);
+        games = await storage.getGamesByTeamIds(filteredTeamIds, overallLimit, startDate, endDate);
         const seen = new Set<string>();
         games = games.filter((g) => (seen.has(g.id) ? false : (seen.add(g.id), true)));
       } else {
         // No teamIds: return latest games across cache by sampling teams from storage
         // Fallback: collect from all teams known in storage
         // Note: MemStorage lacks a getAllGames; we approximate by iterating teams and aggregating
-        const allTeams = await storage.getAllTeams();
-        const perTeam = await Promise.all(allTeams.map((t) => storage.getGamesByTeamId(t.id, 20)));
-        games = perTeam.flat();
+        const allTeams = leagueFilter
+          ? await storage.getTeamsByLeague(leagueFilter)
+          : await storage.getAllTeams();
+        const ids = allTeams.map((t) => t.id);
+        const overallLimit = Math.min(500, baseLimit * Math.max(1, ids.length));
+        games = await storage.getGamesByTeamIds(ids, overallLimit, startDate, endDate);
         const seen = new Set<string>();
         games = games.filter((g) => (seen.has(g.id) ? false : (seen.add(g.id), true)));
       }
@@ -542,48 +709,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching scores:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
-  });
+    },
+  );
 
-  app.get("/api/scores/:gameId", async (req, res) => {
+  app.get(
+    "/api/scores/:gameId",
+    apiGetLimiter,
+    authenticateFirebase,
+    validateBoxScoreParams,
+    loadUserContext,
+    validateTeamAccess,
+    async (req, res) => {
     try {
-      const { gameId } = req.params;
+      const gameId = req.validated?.params?.gameId ?? req.params.gameId;
       const game = await storage.getGame(gameId);
       if (!game) return res.status(404).json({ error: "Not found" });
+
+      // Enforce team authorization when not in overview mode
+      const mode = req.access?.mode ?? "overview";
+      const allowed = Array.isArray(req.access?.authorizedTeamIds)
+        ? req.access!.authorizedTeamIds
+        : [];
+      if (mode !== "overview" && allowed.length > 0) {
+        const isAuthorized = allowed.includes(String(game.homeTeamId)) || allowed.includes(String(game.awayTeamId));
+        if (!isAuthorized) {
+          return res.status(403).json({ error: "Access denied", unauthorizedTeams: [game.homeTeamId, game.awayTeamId] });
+        }
+      }
       return res.json(game);
     } catch (error) {
       console.error("Error fetching game:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
-  });
+    },
+  );
 
-  app.get("/api/schedule", async (req, res) => {
+  app.get(
+    "/api/schedule",
+    apiGetLimiter,
+    authenticateFirebase,
+    validateScheduleQuery,
+    loadUserContext,
+    validateTeamAccess,
+    async (req, res) => {
     try {
-      const { teamIds, start, end } = req.query as Record<string, string | string[]>;
-      const teamIdsArr = Array.isArray(teamIds) ? teamIds : teamIds ? [String(teamIds)] : [];
-      const startDate = start ? new Date(String(start)) : undefined;
-      const endDate = end ? new Date(String(end)) : undefined;
+      const { page = "1", pageSize = "10" } = req.query as Record<string, string | string[]>;
+      const p = Math.max(1, parseInt(String(page)) || 1);
+      const ps = Math.max(1, Math.min(100, parseInt(String(pageSize)) || 10));
+      const teamIdsArr = Array.isArray(req.access?.authorizedTeamIds)
+        ? req.access!.authorizedTeamIds
+        : [];
+      const sport = req.access?.sport ?? null;
+      const leagueFilter = sport ? String(sport).toUpperCase() : null;
+      const startDateStr = req.validated?.query?.startDate;
+      const endDateStr = req.validated?.query?.endDate;
+      let startDate = startDateStr ? new Date(String(startDateStr)) : undefined;
+      let endDate = endDateStr ? new Date(String(endDateStr)) : undefined;
+      // Defaults: upcoming schedule window now -> now+7 days
+      if (!startDate) startDate = new Date();
+      if (!endDate) endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const baseLimit = Math.min(50, Number(req.validated?.query?.limit ?? 10));
 
       let games = [] as Awaited<ReturnType<typeof storage.getGamesByTeamId>>;
       if (teamIdsArr.length > 0) {
-        const perTeam = await Promise.all(teamIdsArr.map((tid) => storage.getGamesByTeamId(String(tid), 100)));
-        games = perTeam.flat();
+        // If sport provided, restrict requested teams to that league
+        let filteredTeamIds = teamIdsArr;
+        if (leagueFilter) {
+          const leagueTeams = await storage.getTeamsByLeague(leagueFilter);
+          const allowedSet = new Set(leagueTeams.map((t) => t.id));
+          filteredTeamIds = teamIdsArr.filter((tid) => allowedSet.has(String(tid)));
+        }
+        const overallLimit = Math.min(500, baseLimit * filteredTeamIds.length);
+        games = await storage.getGamesByTeamIds(filteredTeamIds, overallLimit, startDate, endDate);
       } else {
-        const allTeams = await storage.getAllTeams();
-        const perTeam = await Promise.all(allTeams.map((t) => storage.getGamesByTeamId(t.id, 50)));
-        games = perTeam.flat();
+        const allTeams = leagueFilter
+          ? await storage.getTeamsByLeague(leagueFilter)
+          : await storage.getAllTeams();
+        const ids = allTeams.map((t) => t.id);
+        const overallLimit = Math.min(500, baseLimit * Math.max(1, ids.length));
+        games = await storage.getGamesByTeamIds(ids, overallLimit, startDate, endDate);
       }
-      // Deduplicate and filter by date window
+      // Deduplicate defensively
       const seen = new Set<string>();
       games = games.filter((g) => (seen.has(g.id) ? false : (seen.add(g.id), true)));
-      if (startDate) games = games.filter((g) => g.startTime >= startDate);
-      if (endDate) games = games.filter((g) => g.startTime <= endDate);
       games.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-      return res.json(games);
+      const total = games.length;
+      const start = (p - 1) * ps;
+      const paged = games.slice(start, start + ps);
+      return res.json({ items: paged, page: p, pageSize: ps, total });
     } catch (error) {
       console.error("Error fetching schedule:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
-  });
+    },
+  );
 
   const httpServer = createServer(app);
 

@@ -1,0 +1,70 @@
+{
+  "events": [
+    {
+      "id": "401567001",
+      "date": "2025-01-30T19:05Z",
+      "competitions": [
+        {
+          "date": "2025-01-30T19:05Z",
+          "status": { "type": { "state": "post", "detail": "Final" } },
+          "competitors": [
+            {
+              "homeAway": "away",
+              "score": "3",
+              "team": {
+                "displayName": "Yankees",
+                "shortDisplayName": "NYY",
+                "name": "Yankees",
+                "abbreviation": "NYY"
+              }
+            },
+            {
+              "homeAway": "home",
+              "score": "5",
+              "team": {
+                "displayName": "Red Sox",
+                "shortDisplayName": "BOS",
+                "name": "Red Sox",
+                "abbreviation": "BOS"
+              }
+            }
+          ]
+        }
+      ],
+      "status": { "type": { "state": "post", "detail": "Final" } }
+    },
+    {
+      "id": "401567002",
+      "date": "2025-01-30T21:10Z",
+      "competitions": [
+        {
+          "date": "2025-01-30T21:10Z",
+          "status": { "type": { "state": "in", "detail": "Top 3rd, 1 Out" } },
+          "competitors": [
+            {
+              "homeAway": "away",
+              "score": "2",
+              "team": {
+                "displayName": "Braves",
+                "shortDisplayName": "ATL",
+                "name": "Braves",
+                "abbreviation": "ATL"
+              }
+            },
+            {
+              "homeAway": "home",
+              "score": "1",
+              "team": {
+                "displayName": "Mets",
+                "shortDisplayName": "NYM",
+                "name": "Mets",
+                "abbreviation": "NYM"
+              }
+            }
+          ]
+        }
+      ],
+      "status": { "type": { "state": "in", "detail": "Top 3rd, 1 Out" } }
+    }
+  ]
+}

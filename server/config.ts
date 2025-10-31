@@ -13,6 +13,10 @@ const EnvSchema = z.object({
   FIREBASE_PRIVATE_KEY: z.string().optional(),
   JOBS_ENABLED: z.string().optional(),
   JOB_QUEUE_PREFIX: z.string().optional(),
+  // Background jobs intervals and maintenance
+  LIVE_SCORES_INTERVAL_MS: z.string().optional(),
+  NONLIVE_SCORES_INTERVAL_MS: z.string().optional(),
+  CLEANUP_RUN_AT_CRON: z.string().optional(),
   // Web scraping configuration
   SCRAPER_USER_AGENT: z.string().optional(),
   SCRAPER_RATE_LIMIT_MS: z.string().optional(),
@@ -22,6 +26,11 @@ const EnvSchema = z.object({
   PROXY_URL: z.string().optional(),
   PROXY_USERNAME: z.string().optional(),
   PROXY_PASSWORD: z.string().optional(),
+  // CORS configuration
+  CORS_ORIGINS: z.string().optional(),
+  CORS_CREDENTIALS: z.string().optional(),
+  // DB monitoring
+  DB_SLOW_QUERY_MS: z.string().optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -36,6 +45,48 @@ const env = parsed.data;
 function toPort(val: string | undefined, fallback: number): number {
   const parsedPort = parseInt(val ?? "", 10);
   return Number.isFinite(parsedPort) ? parsedPort : fallback;
+}
+
+function parseCsvList(val: string | undefined): string[] {
+  if (!val) return [];
+  return val
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+}
+
+// Interval bounds and parsing helpers for background jobs
+const INTERVAL_BOUNDS = {
+  LIVE_MIN_MS: 10_000, // 10s minimum to avoid over-scraping
+  LIVE_MAX_MS: 300_000, // 5m maximum for live checks
+  NONLIVE_MIN_MS: 300_000, // 5m minimum for featured refreshes
+  NONLIVE_MAX_MS: 86_400_000, // 24h maximum for non-live updates
+} as const;
+
+function parseIntervalMs(
+  val: string | undefined,
+  {
+    defaultMs,
+    minMs,
+    maxMs,
+    name,
+  }: { defaultMs: number; minMs: number; maxMs: number; name: string }
+): number {
+  const raw = parseInt(val ?? "", 10);
+  if (!Number.isFinite(raw)) return defaultMs;
+  if (raw < minMs) {
+    console.warn(
+      `${name} too low (${raw}ms). Clamping to minimum ${minMs}ms.`
+    );
+    return minMs;
+  }
+  if (raw > maxMs) {
+    console.warn(
+      `${name} too high (${raw}ms). Clamping to maximum ${maxMs}ms.`
+    );
+    return maxMs;
+  }
+  return raw;
 }
 
 export const config = {
@@ -53,6 +104,20 @@ export const config = {
   },
   jobsEnabled: ["1", "true", "yes"].includes((env.JOBS_ENABLED ?? "").toLowerCase()),
   jobQueuePrefix: env.JOB_QUEUE_PREFIX ?? "jobs",
+  // Background jobs intervals and maintenance
+  liveScoresIntervalMs: parseIntervalMs(env.LIVE_SCORES_INTERVAL_MS, {
+    defaultMs: 30_000,
+    minMs: INTERVAL_BOUNDS.LIVE_MIN_MS,
+    maxMs: INTERVAL_BOUNDS.LIVE_MAX_MS,
+    name: "LIVE_SCORES_INTERVAL_MS",
+  }),
+  nonliveScoresIntervalMs: parseIntervalMs(env.NONLIVE_SCORES_INTERVAL_MS, {
+    defaultMs: 3_600_000,
+    minMs: INTERVAL_BOUNDS.NONLIVE_MIN_MS,
+    maxMs: INTERVAL_BOUNDS.NONLIVE_MAX_MS,
+    name: "NONLIVE_SCORES_INTERVAL_MS",
+  }),
+  cleanupRunAtCron: env.CLEANUP_RUN_AT_CRON ?? "0 3 * * *", // daily at 03:00 UTC
   // Web scraping configuration
   scraperUserAgent: env.SCRAPER_USER_AGENT ?? 'CornerLeagueMedia/1.0 (+https://cornerleague.com/bot; contact@cornerleague.com)',
   scraperRateLimitMs: parseInt(env.SCRAPER_RATE_LIMIT_MS ?? '2000', 10),
@@ -62,6 +127,22 @@ export const config = {
   proxyUrl: env.PROXY_URL,
   proxyUsername: env.PROXY_USERNAME,
   proxyPassword: env.PROXY_PASSWORD,
+  // DB monitoring
+  dbSlowQueryMs: Math.min(10_000, Math.max(50, parseInt(env.DB_SLOW_QUERY_MS ?? '200', 10) || 200)),
+  // CORS configuration
+  cors: {
+    allowedOrigins:
+      parseCsvList(env.CORS_ORIGINS).length > 0
+        ? parseCsvList(env.CORS_ORIGINS)
+        : [
+            // sensible defaults for local development
+            'http://localhost:5000',
+            'http://127.0.0.1:5000',
+            'http://localhost:5173',
+            'http://127.0.0.1:5173',
+          ],
+    credentials: ["1", "true", "yes"].includes((env.CORS_CREDENTIALS ?? (env.NODE_ENV === 'development' ? 'true' : 'false')).toLowerCase()),
+  },
 } as const;
 
 export function warnMissingCriticalEnv(): void {

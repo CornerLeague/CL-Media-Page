@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import cors, { CorsOptions } from "cors";
 import cookieParser from "cookie-parser";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
@@ -10,12 +11,37 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { verifyPassword } from "./auth";
 import { storage } from "./storage";
 import { logger, withSource } from "./logger";
+import { randomUUID } from "crypto";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 // Parse cookies for CSRF token cookie support
 app.use(cookieParser());
+
+// Attach a per-request ID early for structured logging and tracing
+app.use((req, res, next) => {
+  const id = randomUUID();
+  (req as any).id = id;
+  (res as any).locals = { ...(res as any).locals, requestId: id };
+  res.setHeader("X-Request-Id", id);
+  next();
+});
+
+// CORS: allowlist origins and credentials based on config
+const allowed = new Set(config.cors.allowedOrigins);
+const corsOptions: CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow same-origin or curl/postman (no origin header)
+    if (!origin) return callback(null, true);
+    const ok = allowed.has(origin);
+    return callback(null, ok);
+  },
+  credentials: config.cors.credentials,
+};
+app.use(cors(corsOptions));
+// Handle preflight for all routes
+app.options("*", cors(corsOptions));
 
 // Phase 2: session middleware with Postgres-backed store (fallback to memory)
 const PgSession = connectPgSimple(session);
@@ -109,6 +135,30 @@ app.use((req, res, next) => {
   warnMissingCriticalEnv();
   const bootLog = withSource("boot");
   bootLog.info({ env: config.nodeEnv, port: config.port }, "starting server");
+  // Startup environment summary (no secrets)
+  bootLog.info(
+    {
+      jobsEnabled: config.jobsEnabled,
+      databaseConfigured: !!config.databaseUrl,
+      redisConfigured: !!config.redisUrl,
+      firebaseConfigured:
+        !!(
+          config.firebase?.projectId &&
+          config.firebase?.clientEmail &&
+          config.firebase?.privateKey
+        ),
+      corsOriginsCount: config.cors.allowedOrigins.length,
+      scraper: {
+        rateLimitMs: config.scraperRateLimitMs,
+        timeoutMs: config.scraperTimeoutMs,
+        maxRetries: config.scraperMaxRetries,
+        proxyEnabled: !!config.proxyUrl,
+      },
+      dbSlowQueryMs: config.dbSlowQueryMs,
+      jobQueuePrefix: config.jobQueuePrefix,
+    },
+    "environment summary"
+  );
   const server = await registerRoutes(app);
 
   // Initialize WebSocket server for live updates

@@ -1,0 +1,43 @@
+{
+  "scenario": "benchmarks-jobs-on",
+  "meta": {
+    "baseUrl": "http://localhost:3001",
+    "runs": 10,
+    "timeoutMs": 10000,
+    "jobsEnabled": true
+  },
+  "summary": {
+    "baseUrl": "http://localhost:3001",
+    "runsPerEndpoint": 10,
+    "timestamp": "2025-10-30T23:49:05.484Z",
+    "results": [
+      {
+        "name": "Dev Games (scores-like)",
+        "path": "/api/dev/games",
+        "count": 10,
+        "avgMs": 3.096720700000006,
+        "p50Ms": 3.001082999999994,
+        "p95Ms": 3.7093329999999867,
+        "errors": 10
+      },
+      {
+        "name": "Updates (news feed)",
+        "path": "/api/updates?pageSize=50",
+        "count": 10,
+        "avgMs": 4.2222165999999905,
+        "p50Ms": 4.012583999999947,
+        "p95Ms": 5.024707999999919,
+        "errors": 10
+      },
+      {
+        "name": "Experiences (content list)",
+        "path": "/api/experiences?pageSize=50",
+        "count": 10,
+        "avgMs": 3.4683332000000404,
+        "p50Ms": 3.0535409999999956,
+        "p95Ms": 4.319708000000219,
+        "errors": 10
+      }
+    ]
+  }
+}

@@ -60,7 +60,7 @@ describe('Team Isolation - Storage Layer', () => {
     // Verify no cross-contamination
     const lakersIds = new Set(lakersResults.map(a => a.id));
     const celticsIds = new Set(celticsResults.map(a => a.id));
-    const overlap = [...lakersIds].filter(id => celticsIds.has(id));
+    const overlap = Array.from(lakersIds).filter(id => celticsIds.has(id));
     expect(overlap.length).toBe(0);
   });
 
@@ -227,7 +227,7 @@ describe('Team Isolation - Search Layer', () => {
     // Verify no document ID overlap
     const lakersDocIds = new Set(lakersResults.map(r => r.documentId));
     const celticsDocIds = new Set(celticsResults.map(r => r.documentId));
-    const overlap = [...lakersDocIds].filter(id => celticsDocIds.has(id));
+    const overlap = Array.from(lakersDocIds).filter(id => celticsDocIds.has(id));
     expect(overlap.length).toBe(0);
   });
 
@@ -425,12 +425,12 @@ describe('Team Isolation - Deduplication Layer', () => {
     const crossTeamSimilarity = minHash.similarity(lakersSig1, celticsSig1);
     expect(crossTeamSimilarity).toBeGreaterThan(0.85);
 
-    // Mark Lakers2 as duplicate of Lakers1 (same team)
-    await storage.updateArticle(lakers2.id, { isDuplicate: true });
+    // Mark Lakers2 as deleted (duplicate of Lakers1 within same team)
+    await storage.updateArticle(lakers2.id, { isDeleted: true });
 
-    // Celtics1 should NOT be marked as duplicate (different team)
+    // Celtics1 should NOT be marked as deleted (different team)
     const celtics1Check = await storage.getArticle(celtics1.id);
-    expect(celtics1Check?.isDuplicate).toBeFalsy();
+    expect(celtics1Check?.isDeleted).toBeFalsy();
   });
 });
 

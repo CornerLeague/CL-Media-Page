@@ -4,6 +4,7 @@ import type { InsertGame, Game } from "@shared/schema";
 import { logger, withSource } from "../logger";
 import { broadcast } from "../ws";
 import { config } from "../config";
+import { metrics } from "../metrics";
 import { createRedis, connectRedis } from "../jobs/redis";
 import type { Redis } from "ioredis";
 import { ValidationService } from "./validationService";
@@ -44,12 +45,32 @@ export class ScoresAgent {
     this.source = source;
   }
 
+  // Sanitize team IDs to enforce LEAGUE_TEAMCODE format and uppercase
+  private sanitizeTeamIds(ids: string[]): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const re = /^[A-Z]{2,4}_[A-Z0-9]+$/;
+    for (const raw of ids) {
+      if (!raw) continue;
+      const upper = raw.toUpperCase().trim();
+      if (!re.test(upper)) continue;
+      if (seen.has(upper)) continue;
+      seen.add(upper);
+      out.push(upper);
+    }
+    return out.sort();
+  }
+
   async runOnce(options: { teamIds?: string[]; limit?: number; sport?: string; mode?: "live" | "schedule" | "featured"; startDate?: string | Date; endDate?: string | Date } = {}): Promise<{ persisted: number; skipped: number; errors: number; items: Game[] }>{
     const log = withSource("scores-agent");
-    const teamIds = options.teamIds ?? [];
+    const requestedTeamIds = options.teamIds ?? [];
+    const teamIds = this.sanitizeTeamIds(requestedTeamIds);
     const limit = options.limit ?? 5;
     const sport = (options.sport ?? "NBA").toUpperCase();
-    const mode: "live" | "schedule" | "featured" = options.mode ?? (teamIds.length > 0 ? "live" : "featured");
+    const explicitMode = options.mode;
+    const mode: "live" | "schedule" | "featured" = explicitMode ?? (teamIds.length > 0 ? "live" : "featured");
+    const t0 = performance.now();
+    const observe = () => { try { metrics.scoresAgentRunDurationMs.labels(sport, mode).observe(performance.now() - t0); } catch {} };
 
     // Resolve date window for schedule mode (defaults: today to tomorrow)
     const startDate = normalizeDate(options.startDate) ?? new Date();
@@ -60,6 +81,13 @@ export class ScoresAgent {
     let skipped = 0;
     let errors = 0;
     const out: Game[] = [];
+
+    // If explicitly in live mode but no valid teamIds after sanitization, enforce isolation by doing nothing
+    if (mode === "live" && teamIds.length === 0) {
+      log.warn({ requestedTeamIds }, "live mode requested with no valid teamIds; skipping to enforce isolation");
+      observe();
+      return { persisted, skipped, errors, items: out };
+    }
 
     // Cache short-circuit for team-scoped or featured queries (skip for schedule mode)
     if (mode !== "schedule") {
@@ -77,6 +105,7 @@ export class ScoresAgent {
             })) as Game[];
             skipped += cachedItems.length;
             log.info({ count: cachedItems.length }, "cache hit; returning cached scores");
+            observe();
             return { persisted, skipped, errors, items: cachedItems };
           }
         }
@@ -156,6 +185,7 @@ export class ScoresAgent {
     } catch (e) {
       errors++;
       log.error({ err: e }, "source fetch failed");
+      observe();
       return { persisted, skipped, errors, items: out };
     }
 
@@ -194,6 +224,7 @@ export class ScoresAgent {
     }
 
     log.info({ persisted, skipped, errors }, "runOnce complete");
+    observe();
     return { persisted, skipped, errors, items: out };
   }
 }

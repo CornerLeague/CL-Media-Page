@@ -4,6 +4,7 @@ import { ethicalFetcher } from '../../utils/scraping/fetcher';
 import { HTMLParser } from '../../utils/scraping/parser';
 import { TeamMapper } from '../../utils/scraping/teamMapper';
 import { logger } from '../../logger';
+import { buildStableGameId } from './idUtils';
 
 /**
  * MLBAdapter
@@ -226,7 +227,7 @@ export class MLBAdapter implements IScoreSource {
 
           const startTimeStr = event?.date || competition?.date;
           const startTime = startTimeStr ? new Date(startTimeStr) : now;
-          const gameId = event?.id ? `MLB_ESPN_${event.id}` : `MLB_ESPN_${awayTeamId}_${homeTeamId}_${Date.now()}`;
+          const gameId = event?.id ? `MLB_ESPN_${event.id}` : buildStableGameId(this.sport, 'ESPN', awayTeamId, homeTeamId, startTimeStr ? new Date(startTimeStr) : undefined);
 
           // Skip any game with invalid team IDs to avoid FK errors
           if (invalidId(homeTeamId) || invalidId(awayTeamId)) {
@@ -298,9 +299,10 @@ export class MLBAdapter implements IScoreSource {
             const inning = this.extractInning(statusText);
             const substate = this.extractSubstate(statusText);
             const outs = this.extractOuts(statusText);
+            const scheduledStart = this.extractScheduledStart(statusText);
 
             games.push({
-              gameId: `MLB_ESPN_${awayTeamId}_${homeTeamId}_${Date.now()}`,
+              gameId: buildStableGameId(this.sport, 'ESPN', awayTeamId, homeTeamId, scheduledStart),
               homeTeamId,
               awayTeamId,
               homePts: homeScore,
@@ -308,7 +310,7 @@ export class MLBAdapter implements IScoreSource {
               status: this.mapStatus(statusText),
               period: inning,
               timeRemaining: substate ?? (outs ? outs : undefined),
-              startTime: new Date(),
+              startTime: scheduledStart || new Date(),
               source: 'ESPN.com',
             });
           } catch (err) {
@@ -403,8 +405,9 @@ export class MLBAdapter implements IScoreSource {
             }
           }
 
+          const scheduledStart = this.extractScheduledStart(statusText);
           games.push({
-            gameId: `MLB_CBS_${awayTeamId}_${homeTeamId}_${Date.now()}`,
+            gameId: buildStableGameId(this.sport, 'CBS', awayTeamId, homeTeamId, scheduledStart),
             homeTeamId,
             awayTeamId,
             homePts: homeScore,
@@ -412,7 +415,7 @@ export class MLBAdapter implements IScoreSource {
             status: this.mapStatus(statusText),
             period: this.extractInning(statusText),
             timeRemaining: this.extractOuts(statusText),
-            startTime: new Date(),
+            startTime: scheduledStart || new Date(),
             source: 'CBS Sports',
           });
         } catch (err) {
@@ -439,8 +442,9 @@ export class MLBAdapter implements IScoreSource {
               if (!teamCodes.includes(awayCode) && !teamCodes.includes(homeCode)) return;
             }
 
+            const scheduledStart = this.extractScheduledStart('scheduled');
             games.push({
-              gameId: `MLB_CBS_${awayTeamId}_${homeTeamId}_${Date.now()}`,
+              gameId: buildStableGameId(this.sport, 'CBS', awayTeamId, homeTeamId, scheduledStart),
               homeTeamId,
               awayTeamId,
               homePts: 0,
@@ -448,7 +452,7 @@ export class MLBAdapter implements IScoreSource {
               status: 'scheduled',
               period: undefined,
               timeRemaining: undefined,
-              startTime: new Date(),
+              startTime: scheduledStart || new Date(),
               source: 'CBS Sports',
             });
           } catch (err) {
@@ -572,5 +576,39 @@ export class MLBAdapter implements IScoreSource {
     }
 
     return undefined;
+  }
+
+  /**
+   * Extract scheduled start time from status text (e.g., "7:05 PM", "8:30 PM ET", "Tomorrow 7:30 PM")
+   * Returns a Date constructed for today (or tomorrow) in local timezone.
+   */
+  private extractScheduledStart(statusText: string, baseDate?: Date): Date | undefined {
+    const text = statusText || '';
+
+    const m = text.match(/\b(\d{1,2}):(\d{2})\s*(AM|PM)\b/i);
+    if (!m) return undefined;
+
+    let hour = parseInt(m[1], 10);
+    const minute = parseInt(m[2], 10);
+    const ampm = m[3].toUpperCase();
+
+    if (ampm === 'PM' && hour !== 12) hour += 12;
+    if (ampm === 'AM' && hour === 12) hour = 0;
+
+    const base = baseDate || new Date();
+    const isTomorrow = /\btomorrow\b/i.test(text);
+    const dayOffset = isTomorrow ? 1 : 0;
+
+    const start = new Date(
+      base.getFullYear(),
+      base.getMonth(),
+      base.getDate() + dayOffset,
+      hour,
+      minute,
+      0,
+      0
+    );
+
+    return isNaN(start.getTime()) ? undefined : start;
   }
 }

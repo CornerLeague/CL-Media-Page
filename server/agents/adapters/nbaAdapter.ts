@@ -4,6 +4,7 @@ import { ethicalFetcher } from '../../utils/scraping/fetcher';
 import { HTMLParser } from '../../utils/scraping/parser';
 import { TeamMapper } from '../../utils/scraping/teamMapper';
 import { logger } from '../../logger';
+import { buildStableGameId } from './idUtils';
 
 /**
  * NBAAdapter
@@ -236,8 +237,9 @@ export class NBAAdapter implements IScoreSource {
             }
           }
 
+          const scheduledStart = this.extractScheduledStart(statusText);
           games.push({
-            gameId: `NBA_ESPN_${awayTeamId}_${homeTeamId}_${Date.now()}`,
+            gameId: buildStableGameId(this.sport, 'ESPN', awayTeamId, homeTeamId, scheduledStart),
             homeTeamId,
             awayTeamId,
             homePts: homeScore,
@@ -245,7 +247,7 @@ export class NBAAdapter implements IScoreSource {
             status: this.mapStatus(statusText),
             period: this.extractPeriod(statusText),
             timeRemaining: this.extractTimeRemaining(statusText),
-            startTime: this.extractScheduledStart(statusText) || new Date(),
+            startTime: scheduledStart || new Date(),
             source: 'ESPN.com',
           });
         } catch (err) {
@@ -299,8 +301,9 @@ export class NBAAdapter implements IScoreSource {
             }
           }
 
+          const scheduledStart = this.extractScheduledStart(statusText);
           games.push({
-            gameId: `NBA_CBS_${awayTeamId}_${homeTeamId}_${Date.now()}`,
+            gameId: buildStableGameId(this.sport, 'CBS', awayTeamId, homeTeamId, scheduledStart),
             homeTeamId,
             awayTeamId,
             homePts: homeScore,
@@ -308,7 +311,7 @@ export class NBAAdapter implements IScoreSource {
             status: this.mapStatus(statusText),
             period: this.extractPeriod(statusText),
             timeRemaining: this.extractTimeRemaining(statusText),
-            startTime: this.extractScheduledStart(statusText) || new Date(),
+            startTime: scheduledStart || new Date(),
             source: 'CBS Sports',
           });
         } catch (err) {

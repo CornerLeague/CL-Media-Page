@@ -97,7 +97,6 @@ This document outlines the implementation plan for transforming the Corner Leagu
 - Never mix data from different teams in the same response
 
 **Data Sources:**
-- BallDontLie API (NBA) - Primary source
 - Official league APIs (NBA.com, NFL.com, MLB.com)
 - ESPN, CBS Sports (validation sources)
 

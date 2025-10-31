@@ -22,18 +22,20 @@ import type {
 /**
  * Generate a mock article with realistic data
  */
-export function createMockArticle(overrides: Partial<InsertArticle> = {}): InsertArticle {
+export function createMockArticle(overrides: any = {}): Article {
   const id = randomUUID();
-  const teamId = overrides.teamId || 'NBA_LAL';
+  const teamId = typeof overrides === 'string' ? overrides : (overrides.teamId || 'NBA_LAL');
   const now = new Date();
   
   return {
+    id,
     teamId,
     title: 'Lakers defeat Celtics in overtime thriller',
     content: 'The Los Angeles Lakers defeated the Boston Celtics 120-118 in an overtime thriller at Crypto.com Arena. LeBron James led the way with 35 points, 10 rebounds, and 8 assists. Anthony Davis added 28 points and 15 rebounds in the victory.',
     summary: 'Lakers win 120-118 in OT against Celtics. LeBron: 35 pts, AD: 28 pts.',
     author: 'John Smith',
     publishedAt: now,
+    scrapedAt: now,
     sourceUrl: `https://espn.com/nba/article-${id}`,
     sourceName: 'ESPN',
     sourceType: 'rss',
@@ -42,7 +44,7 @@ export function createMockArticle(overrides: Partial<InsertArticle> = {}): Inser
     relevanceScore: 85,
     isProcessed: false,
     isDeleted: false,
-    ...overrides,
+    ...(typeof overrides === 'object' ? overrides : {}),
   };
 }
 
@@ -116,7 +118,7 @@ export function createMockBM25Index(
 /**
  * Generate multiple mock articles for a team
  */
-export function createMockArticles(count: number, teamId: string): InsertArticle[] {
+export function createMockArticles(count: number, teamId: string): Article[] {
   const templates = [
     {
       title: '{player} scores 40 points in {team} victory',
@@ -384,13 +386,20 @@ export function randomString(length: number): string {
  */
 export function generateSimilarText(original: string, changePercent: number = 0.1): string {
   const words = original.split(' ');
-  const numChanges = Math.floor(words.length * changePercent);
-  
+  const total = words.length;
+  const numChanges = Math.max(1, Math.floor(total * changePercent));
+  const step = Math.max(1, Math.floor(total / numChanges));
+
+  // Deterministic, evenly spaced modifications to stabilize tests.
+  // Preserve partial word overlap to maintain similarity characteristics.
   for (let i = 0; i < numChanges; i++) {
-    const index = Math.floor(Math.random() * words.length);
-    words[index] = randomString(words[index].length);
+    const index = Math.min(i * step, total - 1);
+    const w = words[index];
+    const keep = Math.max(1, Math.floor(w.length / 2));
+    const mutated = w.slice(0, keep) + randomString(Math.max(0, w.length - keep));
+    words[index] = mutated;
   }
-  
+
   return words.join(' ');
 }
 

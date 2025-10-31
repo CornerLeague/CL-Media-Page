@@ -1,0 +1,13 @@
+{
+  "scenario": "benchmarks-cold",
+  "meta": {
+    "baseUrl": "http://localhost:5060",
+    "runs": 10,
+    "timeoutMs": 3000
+  },
+  "summary": {
+    "error": "Failed to parse harness output",
+    "raw": "",
+    "stderr": "file:///Users/myles/Desktop/SportsCenterHome1/scripts/benchmarks/httpBenchmarks.js:9\nconst fs = require('fs');\n           ^\n\nReferenceError: require is not defined in ES module scope, you can use import instead\nThis file is being treated as an ES module because it has a '.js' file extension and '/Users/myles/Desktop/SportsCenterHome1/package.json' contains \"type\": \"module\". To treat it as a CommonJS script, rename it to use the '.cjs' file extension.\n    at file:///Users/myles/Desktop/SportsCenterHome1/scripts/benchmarks/httpBenchmarks.js:9:12\n    at ModuleJob.run (node:internal/modules/esm/module_job:195:25)\n    at async ModuleLoader.import (node:internal/modules/esm/loader:337:24)\n    at async loadESM (node:internal/process/esm_loader:34:7)\n    at async handleMainPromise (node:internal/modules/run_main:106:12)\n\nNode.js v18.20.2\n"
+  }
+}

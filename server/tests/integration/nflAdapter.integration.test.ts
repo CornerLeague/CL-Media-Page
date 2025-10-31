@@ -10,6 +10,14 @@ import { NFLAdapter } from '../../agents/adapters';
 import { ethicalFetcher } from '../../utils/scraping/fetcher';
 import { globalRobotsChecker } from '../../utils/scraping/robotsChecker';
 import { globalRateLimiter } from '../../utils/scraping/rateLimiter';
+import adapterTestUtils from '../helpers/adapterTestUtils';
+
+const {
+  mockEthicalFetcherSequence,
+  mockRobotsAllowAll,
+  mockRateLimiterImmediate,
+  resetScrapingMocks,
+} = adapterTestUtils;
 
 function buildCBSGame({
   awayTeam,
@@ -178,4 +186,61 @@ describe('NFLAdapter Integration', () => {
     },
     30000,
   );
+});
+
+describe('NFLAdapter Error Handling (1.5.10)', () => {
+  beforeEach(() => {
+    mockRobotsAllowAll();
+    mockRateLimiterImmediate();
+  });
+
+  afterEach(() => {
+    resetScrapingMocks();
+  });
+
+  it('returns empty array when ESPN and CBS both fail with network errors', async () => {
+    const adapter = new NFLAdapter();
+    mockEthicalFetcherSequence([
+      new Error('ESPN network error'),
+      new Error('CBS network error'),
+    ]);
+
+    const games = await adapter.fetchLive([]);
+    expect(Array.isArray(games)).toBe(true);
+    expect(games.length).toBe(0);
+  });
+
+  it('returns empty array when selectors are missing in both sources', async () => {
+    const adapter = new NFLAdapter();
+    const emptyHtml = '<html><body><div>No scoreboard here</div></body></html>';
+    mockEthicalFetcherSequence([emptyHtml, emptyHtml]);
+
+    const games = await adapter.fetchLive([]);
+    expect(Array.isArray(games)).toBe(true);
+    expect(games.length).toBe(0);
+  });
+
+  it('handles HTTP 429 gracefully without throwing — returns empty array', async () => {
+    const adapter = new NFLAdapter();
+    mockEthicalFetcherSequence([
+      new Error('HTTP 429: Too Many Requests'),
+      new Error('HTTP 429: Too Many Requests'),
+    ]);
+
+    const games = await adapter.fetchLive([]);
+    expect(Array.isArray(games)).toBe(true);
+    expect(games.length).toBe(0);
+  });
+
+  it('handles timeout/AbortError gracefully — returns empty array', async () => {
+    const adapter = new NFLAdapter();
+    mockEthicalFetcherSequence([
+      new Error('AbortError'),
+      new Error('AbortError'),
+    ]);
+
+    const games = await adapter.fetchLive([]);
+    expect(Array.isArray(games)).toBe(true);
+    expect(games.length).toBe(0);
+  });
 });

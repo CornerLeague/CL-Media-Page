@@ -115,12 +115,12 @@ describe('Search and Deduplication - Index Rebuild', () => {
       sourceName: 'Source B',
       sourceType: 'rss',
       publishedAt: new Date(),
-      isDuplicate: true,
+      isDeleted: true,
     });
 
     // Rebuild index - exclude duplicates
     const allArticles = await storage.getArticlesByTeam('NBA_LAL');
-    const nonDuplicates = allArticles.filter(a => !a.isDuplicate);
+    const nonDuplicates = allArticles.filter(a => !a.isDeleted);
 
     for (const article of nonDuplicates) {
       bm25Index.addDocument({
@@ -198,7 +198,7 @@ describe('Search and Deduplication - Duplicate Exclusion', () => {
       sourceName: 'Source A',
       sourceType: 'rss',
       publishedAt: new Date(),
-      isDuplicate: false,
+      isDeleted: false,
     });
 
     // Create duplicate (not indexed)
@@ -210,7 +210,7 @@ describe('Search and Deduplication - Duplicate Exclusion', () => {
       sourceName: 'Source B',
       sourceType: 'rss',
       publishedAt: new Date(),
-      isDuplicate: true,
+      isDeleted: true,
     });
 
     // Index only non-duplicates
@@ -250,7 +250,7 @@ describe('Search and Deduplication - Duplicate Exclusion', () => {
       sourceName: 'Source B',
       sourceType: 'rss',
       publishedAt: new Date(),
-      isDuplicate: true,
+      isDeleted: true,
     });
 
     const dup2 = await storage.createArticle({
@@ -261,7 +261,7 @@ describe('Search and Deduplication - Duplicate Exclusion', () => {
       sourceName: 'Source C',
       sourceType: 'rss',
       publishedAt: new Date(),
-      isDuplicate: true,
+      isDeleted: true,
     });
 
     // Index only original
@@ -502,7 +502,7 @@ describe('Search and Deduplication - Edge Cases', () => {
         sourceName: 'Test',
         sourceType: 'rss',
         publishedAt: new Date(),
-        isDuplicate: true,
+        isDeleted: true,
       });
     }
 

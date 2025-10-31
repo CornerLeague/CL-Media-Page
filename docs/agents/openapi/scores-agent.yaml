@@ -1,0 +1,244 @@
+openapi: 3.1.0
+info:
+  title: Scores Agent API (Stub)
+  version: 0.1.0
+  description: |
+    OpenAPI stub for Scores Agent endpoints. This is a starting point and will be
+    expanded as integration tests finalize behaviors and payloads.
+servers:
+  - url: http://localhost:3001
+    description: Local development
+components:
+  securitySchemes:
+    firebaseAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Unauthorized
+    Forbidden:
+      description: Forbidden (team access denied)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              unauthorizedTeams:
+                type: array
+                items:
+                  type: string
+    ValidationError:
+      description: Invalid payload
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Invalid payload
+              details:
+                type: array
+                items:
+                  type: object
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Not found
+security:
+  - firebaseAuth: []
+paths:
+  /api/scores:
+    get:
+      summary: List recent/live scores
+      description: Returns recent or live scores for requested teams or overview mode.
+      parameters:
+        - in: query
+          name: teamIds
+          schema:
+            type: string
+          description: Comma-separated team IDs (e.g., NBA_LAL,NBA_BOS)
+        - in: query
+          name: sport
+          schema:
+            type: string
+            enum: [nba, nfl, mlb, nhl]
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+        - in: query
+          name: startDate
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: endDate
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        homeTeamId: { type: string }
+                        awayTeamId: { type: string }
+                        homePts: { type: integer }
+                        awayPts: { type: integer }
+                        status: { type: string, enum: [scheduled, in_progress, final] }
+                        period: { type: string, nullable: true }
+                        timeRemaining: { type: string, nullable: true }
+                        startTime: { type: string, format: date-time }
+                        cachedAt: { type: string, format: date-time }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+                  total: { type: integer }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500':
+          description: Internal server error
+  /api/schedule:
+    get:
+      summary: List upcoming scheduled games
+      description: Returns future games within a specified window.
+      parameters:
+        - in: query
+          name: teamIds
+          schema:
+            type: string
+        - in: query
+          name: sport
+          schema:
+            type: string
+            enum: [nba, nfl, mlb, nhl]
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+        - in: query
+          name: startDate
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: endDate
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        homeTeamId: { type: string }
+                        awayTeamId: { type: string }
+                        homePts: { type: integer }
+                        awayPts: { type: integer }
+                        status: { type: string, enum: [scheduled, in_progress, final] }
+                        period: { type: string, nullable: true }
+                        timeRemaining: { type: string, nullable: true }
+                        startTime: { type: string, format: date-time }
+                        cachedAt: { type: string, format: date-time }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+                  total: { type: integer }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500':
+          description: Internal server error
+  /api/scores/{gameId}:
+    get:
+      summary: Get a single game by ID
+      parameters:
+        - in: path
+          name: gameId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  homeTeamId: { type: string }
+                  awayTeamId: { type: string }
+                  homePts: { type: integer }
+                  awayPts: { type: integer }
+                  status: { type: string, enum: [scheduled, in_progress, final] }
+                  period: { type: string, nullable: true }
+                  timeRemaining: { type: string, nullable: true }
+                  startTime: { type: string, format: date-time }
+                  cachedAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500':
+          description: Internal server error
