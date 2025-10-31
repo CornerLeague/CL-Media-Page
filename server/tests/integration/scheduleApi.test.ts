@@ -8,7 +8,6 @@ process.env.NODE_ENV = 'development';
 delete process.env.FIREBASE_PROJECT_ID;
 delete process.env.FIREBASE_CLIENT_EMAIL;
 delete process.env.FIREBASE_PRIVATE_KEY;
-process.env.SCRAPER_RATE_LIMIT_MS = '0'; // keep integration tests snappy
 
 describe('Schedule API', () => {
   let server: import('http').Server;
