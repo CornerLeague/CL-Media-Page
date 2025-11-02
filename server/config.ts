@@ -13,6 +13,8 @@ const EnvSchema = z.object({
   FIREBASE_PRIVATE_KEY: z.string().optional(),
   JOBS_ENABLED: z.string().optional(),
   JOB_QUEUE_PREFIX: z.string().optional(),
+  // Force in-memory storage for local/dev regardless of DATABASE_URL
+  USE_MEM_STORAGE: z.string().optional(),
   // Background jobs intervals and maintenance
   LIVE_SCORES_INTERVAL_MS: z.string().optional(),
   NONLIVE_SCORES_INTERVAL_MS: z.string().optional(),
@@ -94,6 +96,8 @@ export const config = {
   isDev: env.NODE_ENV === "development",
   port: toPort(env.PORT, 5000),
   databaseUrl: env.DATABASE_URL,
+  // Explicit override to use in-memory storage, regardless of DATABASE_URL presence
+  useMemStorage: ["1", "true", "yes"].includes((env.USE_MEM_STORAGE ?? "").toLowerCase()),
   redisUrl: env.REDIS_URL,
   sessionSecret: env.SESSION_SECRET,
   deepseekApiKey: env.DEEPSEEK_API_KEY,
@@ -147,7 +151,7 @@ export const config = {
 
 export function warnMissingCriticalEnv(): void {
   const missing: string[] = [];
-  if (!config.databaseUrl) missing.push("DATABASE_URL");
+  if (!config.databaseUrl && !config.useMemStorage) missing.push("DATABASE_URL");
   if (!config.sessionSecret) missing.push("SESSION_SECRET");
   // Redis is recommended but optional in Phase 0
   // DeepSeek key optional until Summary agent is enabled

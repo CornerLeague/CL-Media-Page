@@ -25,7 +25,7 @@ export const sessions = pgTable("sessions", {
 
 export const insertSessionSchema = createInsertSchema(sessions).omit({
   id: true,
-});
+} as const);
 
 export type InsertSession = z.infer<typeof insertSessionSchema>;
 export type Session = typeof sessions.$inferSelect;
@@ -50,7 +50,7 @@ export const userTeams = pgTable("user_teams", {
 
 export const insertUserTeamSchema = createInsertSchema(userTeams).omit({
   id: true,
-});
+} as const);
 
 export type InsertUserTeam = z.infer<typeof insertUserTeamSchema>;
 export type UserTeam = typeof userTeams.$inferSelect;
@@ -66,7 +66,7 @@ export const summaries = pgTable("summaries", {
 export const insertSummarySchema = createInsertSchema(summaries).omit({
   id: true,
   generatedAt: true,
-});
+} as const);
 
 export type InsertSummary = z.infer<typeof insertSummarySchema>;
 export type Summary = typeof summaries.$inferSelect;
@@ -86,7 +86,7 @@ export const games = pgTable("games", {
 
 export const insertGameSchema = createInsertSchema(games).omit({
   cachedAt: true,
-});
+} as const);
 
 export type InsertGame = z.infer<typeof insertGameSchema>;
 export type Game = typeof games.$inferSelect;
@@ -104,7 +104,7 @@ export const updates = pgTable("updates", {
 export const insertUpdateSchema = createInsertSchema(updates).omit({
   id: true,
   timestamp: true,
-});
+} as const);
 
 export type InsertUpdate = z.infer<typeof insertUpdateSchema>;
 export type Update = typeof updates.$inferSelect;
@@ -124,7 +124,7 @@ export const experiences = pgTable("experiences", {
 export const insertExperienceSchema = createInsertSchema(experiences).omit({
   id: true,
   createdAt: true,
-});
+} as const);
 
 export type InsertExperience = z.infer<typeof insertExperienceSchema>;
 export type Experience = typeof experiences.$inferSelect;
@@ -139,7 +139,7 @@ export const rsvps = pgTable("rsvps", {
 export const insertRsvpSchema = createInsertSchema(rsvps).omit({
   id: true,
   createdAt: true,
-});
+} as const);
 
 export type InsertRsvp = z.infer<typeof insertRsvpSchema>;
 export type Rsvp = typeof rsvps.$inferSelect;
@@ -153,7 +153,10 @@ export const userProfiles = pgTable("user_profiles", {
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
 });
 
-export const insertUserProfileSchema = createInsertSchema(userProfiles);
+export const insertUserProfileSchema = createInsertSchema(userProfiles).extend({
+  favoriteSports: z.array(z.string()).optional(),
+  favoriteTeams: z.array(z.string()).optional(),
+});
 
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
@@ -212,7 +215,7 @@ export const articles = pgTable(
 export const insertArticleSchema = createInsertSchema(articles).omit({
   id: true,
   scrapedAt: true,
-});
+} as const);
 
 export type InsertArticle = z.infer<typeof insertArticleSchema>;
 export type Article = typeof articles.$inferSelect;
@@ -245,7 +248,7 @@ export const articleClassifications = pgTable(
 export const insertArticleClassificationSchema = createInsertSchema(articleClassifications).omit({
   id: true,
   classifiedAt: true,
-});
+} as const);
 
 export type InsertArticleClassification = z.infer<typeof insertArticleClassificationSchema>;
 export type ArticleClassification = typeof articleClassifications.$inferSelect;
@@ -297,7 +300,7 @@ export const insertNewsSourceSchema = createInsertSchema(newsSources).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
-});
+} as const);
 
 export type InsertNewsSource = z.infer<typeof insertNewsSourceSchema>;
 export type NewsSource = typeof newsSources.$inferSelect;
@@ -334,11 +337,71 @@ export const bm25Indexes = pgTable(
   })
 );
 
-export const insertBM25IndexSchema = createInsertSchema(bm25Indexes).omit({
+export const insertBm25IndexSchema = createInsertSchema(bm25Indexes).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
-});
+} as const);
 
-export type InsertBM25Index = z.infer<typeof insertBM25IndexSchema>;
+export type InsertBM25Index = z.infer<typeof insertBm25IndexSchema>;
 export type BM25Index = typeof bm25Indexes.$inferSelect;
+
+// Game score data interface for latest team score queries
+export interface GameScoreData {
+  gameId: string;
+  homeTeam: {
+    id: string;
+    name: string;
+    code: string;
+    league: string;
+    score: number;
+  };
+  awayTeam: {
+    id: string;
+    name: string;
+    code: string;
+    league: string;
+    score: number;
+  };
+  status: string;
+  period: string | null;
+  timeRemaining: string | null;
+  startTime: Date;
+  isHomeGame: boolean; // true if the requested team is the home team
+  opponent: {
+    id: string;
+    name: string;
+    code: string;
+    league: string;
+    score: number;
+  };
+  teamScore: number; // score of the requested team
+  cachedAt: Date;
+}
+
+// League-to-Sport mapping for database compatibility
+// The teams table uses 'league' field, but application logic expects 'sport'
+export const LEAGUE_TO_SPORT_MAPPING: Record<string, string> = {
+  'NBA': 'NBA',
+  'NFL': 'NFL', 
+  'MLB': 'MLB',
+  'NHL': 'NHL',
+  'NCAAF': 'College Football',
+  'NCAAB': 'College Basketball',
+  'MLS': 'Soccer',
+  'EPL': 'Soccer',
+  'UCL': 'Soccer',
+  'LALIGA': 'Soccer',
+  'BUNDESLIGA': 'Soccer',
+  'SERIEA': 'Soccer',
+} as const;
+
+// Helper function to convert league to sport
+export const leagueToSport = (league: string): string => {
+  return LEAGUE_TO_SPORT_MAPPING[league.toUpperCase()] || league;
+};
+
+// Helper function to get all sports from leagues
+export const getSportsFromLeagues = (leagues: string[]): string[] => {
+  return Array.from(new Set(leagues.map(leagueToSport)));
+};

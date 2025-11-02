@@ -1,5 +1,5 @@
 import { db } from "./db";
-import * as schema from "@shared/schema";
+import * as schema from "../shared/schema";
 import { withSource } from "./logger";
 import { seedArticles } from "./seeds/articles";
 

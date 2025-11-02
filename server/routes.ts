@@ -7,27 +7,151 @@ import rateLimit from "express-rate-limit";
 import csurf from "csurf";
 import { storage } from "./storage";
 import { db } from "./db";
-import { teams } from "@shared/schema";
+import { teams } from "../shared/schema";
 import { createRedis, connectRedis, closeRedis } from "./jobs/redis";
 import * as queuesMod from "./jobs/queues";
 import { getWsStats } from "./ws";
 import { withSource } from "./logger";
 import { performance } from "perf_hooks";
-import { insertUserProfileSchema } from "@shared/schema";
-import { insertUpdateSchema, insertExperienceSchema, insertRsvpSchema, insertTeamSchema, insertGameSchema, insertUserSchema } from "@shared/schema";
+import { insertUserProfileSchema } from "../shared/schema";
+import { insertUpdateSchema, insertExperienceSchema, insertRsvpSchema, insertTeamSchema, insertGameSchema, insertUserSchema } from "../shared/schema";
 import { authenticateFirebase } from "./middleware/authenticateFirebase";
 import { loadUserContext } from "./middleware/loadUserContext";
 import { validateTeamAccess } from "./middleware/teamAccessGuard";
-import { validateScoresQuery, validateScheduleQuery, validateBoxScoreParams } from "./middleware/validateRequest";
+import { validateScoresQuery, validateScheduleQuery, validateBoxScoreParams, validateUserTeamScoresQuery } from "./middleware/validateRequest";
 import { config } from "./config";
 import { metrics } from "./metrics";
+import { 
+  UserTeamScoresError,
+  NoFavoriteTeamError,
+  ScoreFetchError,
+  DatabaseError,
+  ValidationError,
+  AuthenticationError,
+  RateLimitError,
+  ServiceUnavailableError,
+  ErrorResponse,
+  extractErrorInfo,
+  createErrorResponse,
+  logError,
+  ErrorSeverity
+} from "./types/errors";
+
+/**
+ * Centralized error handling function for API endpoints
+ */
+function handleApiError(
+  error: Error,
+  res: any,
+  operation: string,
+  context?: Record<string, any>
+): void {
+  const logger = withSource('api-error');
+  const requestId = res.locals?.requestId || Math.random().toString(36).substring(7);
+  
+  // Log the error with context
+  logError(logger, error, {
+    operation,
+    requestId,
+    ...context
+  });
+
+  // Handle specific error types
+  if (error instanceof UserTeamScoresError) {
+    const errorResponse = createErrorResponse(error, requestId);
+    return res.status(error.statusCode).json(errorResponse);
+  }
+
+  if (error instanceof DatabaseError) {
+    const errorResponse = createErrorResponse(error, requestId);
+    return res.status(error.statusCode).json(errorResponse);
+  }
+
+  if (error instanceof ValidationError) {
+    const errorResponse = createErrorResponse(error, requestId);
+    return res.status(error.statusCode).json(errorResponse);
+  }
+
+  if (error instanceof AuthenticationError) {
+    const errorResponse = createErrorResponse(error, requestId);
+    return res.status(error.statusCode).json(errorResponse);
+  }
+
+  if (error instanceof RateLimitError) {
+    const errorResponse = createErrorResponse(error, requestId);
+    return res.status(error.statusCode).json(errorResponse);
+  }
+
+  if (error instanceof ServiceUnavailableError) {
+    const errorResponse = createErrorResponse(error, requestId);
+    return res.status(error.statusCode).json(errorResponse);
+  }
+
+  // Handle unknown errors
+  const fallbackError = new UserTeamScoresError(
+    'An unexpected error occurred',
+    'INTERNAL_ERROR',
+    500,
+    { operation, originalError: error.message }
+  );
+  
+  const errorResponse = createErrorResponse(fallbackError, requestId);
+  return res.status(500).json(errorResponse);
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Basic rate limits for auth endpoints
-  const authLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });
-  const loginLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
+  // Basic rate limits for auth endpoints with custom error handling
+  const authLimiter = rateLimit({ 
+    windowMs: 60 * 1000, 
+    max: 20,
+    handler: (req, res) => {
+      const error = new RateLimitError('Authentication rate limit exceeded', {
+        limit: 20,
+        windowMs: 60000,
+        clientIP: req.ip
+      });
+      return handleApiError(error, res, 'auth-rate-limit', {
+        clientIP: req.ip,
+        userAgent: req.get('User-Agent')
+      });
+    }
+  });
+  
+  const loginLimiter = rateLimit({ 
+    windowMs: 60 * 1000, 
+    max: 10,
+    handler: (req, res) => {
+      const error = new RateLimitError('Login rate limit exceeded', {
+        limit: 10,
+        windowMs: 60000,
+        clientIP: req.ip
+      });
+      return handleApiError(error, res, 'login-rate-limit', {
+        clientIP: req.ip,
+        userAgent: req.get('User-Agent')
+      });
+    }
+  });
+  
   // Per-IP limiter for GET endpoints
-  const apiGetLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false });
+  const apiGetLimiter = rateLimit({ 
+    windowMs: 60 * 1000, 
+    max: 60, 
+    standardHeaders: true, 
+    legacyHeaders: false,
+    handler: (req, res) => {
+      const error = new RateLimitError('API rate limit exceeded', {
+        limit: 60,
+        windowMs: 60000,
+        clientIP: req.ip
+      });
+      return handleApiError(error, res, 'api-rate-limit', {
+        clientIP: req.ip,
+        userAgent: req.get('User-Agent'),
+        endpoint: req.path
+      });
+    }
+  });
   // Use cookie-based CSRF secret to avoid session secret rotation issues
   const csrfProtection = csurf({ cookie: true });
 
@@ -59,11 +183,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       version = JSON.parse(raw)?.version ?? null;
     } catch {}
 
-    // DB check: if Database URL present, run a lightweight select; else consider MemStorage OK
+    // DB check: if Database URL present and MemStorage not forced, run a lightweight select; else consider MemStorage OK
     let dbOk = true;
     let dbLatencyMs: number | null = null;
     let dbMessage: string | null = null;
-    if (config.databaseUrl && db) {
+    if (!config.useMemStorage && config.databaseUrl && db) {
       const t0 = performance.now();
       try {
         await db.select().from(teams).limit(1);
@@ -72,17 +196,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dbOk = false;
         dbLatencyMs = Math.round(performance.now() - t0);
         dbMessage = String(err?.message ?? "db error");
+        
+        // Enhanced structured logging for database health check failures
+        const logger = withSource('health-check');
+        logError(logger, err, {
+          operation: 'database_health_check',
+          table: 'teams',
+          query: 'SELECT * FROM teams LIMIT 1',
+          latencyMs: dbLatencyMs,
+          databaseUrl: config.databaseUrl ? '[REDACTED]' : null,
+          errorCode: err?.code,
+          errorDetail: err?.detail
+        });
       }
     } else {
       dbOk = true;
       dbMessage = "mem-storage";
     }
 
-    // Redis check: only attempt if Redis URL is configured
+    // Redis check: only attempt if Redis URL is configured and jobs are enabled
     let redisOk = true;
     let redisLatencyMs: number | null = null;
     let redisMessage: string | null = null;
-    if (config.redisUrl) {
+    if (config.redisUrl && config.jobsEnabled) {
       const t0 = performance.now();
       const client = createRedis();
       try {
@@ -98,7 +234,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } else {
       redisOk = true;
-      redisMessage = "not-configured";
+      redisMessage = config.jobsEnabled ? "not-configured" : "disabled";
     }
 
     // Jobs: provide a lightweight summary when enabled
@@ -140,7 +276,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         db: { ok: dbOk, latency_ms: dbLatencyMs, message: dbMessage },
         redis: { ok: redisOk, latency_ms: redisLatencyMs, message: redisMessage },
         jobs: { ok: jobsOk, counts: jobsCounts, repeatables: jobsRepeatables, message: jobsMessage },
-        ws: { ok: wsOk, clients: ws.clients, path: ws.path },
+        ws: { ok: wsOk, clients: ws.clients, authenticatedClients: ws.authenticatedClients, path: ws.path },
       },
     };
 
@@ -149,6 +285,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch {}
 
     return res.status(200).json(body);
+  });
+
+  // Error monitoring endpoints
+  app.get("/api/monitoring/errors", async (_req, res) => {
+    try {
+      const { getMonitoringHealth } = await import("./monitoring/errorMonitoring");
+      const health = getMonitoringHealth();
+      return res.json(health);
+    } catch (error) {
+      return handleApiError(
+        error as Error,
+        res,
+        'get-error-monitoring',
+        { endpoint: '/api/monitoring/errors' }
+      );
+    }
+  });
+
+  app.get("/api/monitoring/errors/stats", async (_req, res) => {
+    try {
+      const { errorMonitoring } = await import("./monitoring/errorMonitoring");
+      const stats = errorMonitoring.getErrorStats();
+      return res.json(stats);
+    } catch (error) {
+      return handleApiError(
+        error as Error,
+        res,
+        'get-error-stats',
+        { endpoint: '/api/monitoring/errors/stats' }
+      );
+    }
+  });
+
+  // User team scores specific health check endpoint
+  app.get("/api/monitoring/user-team-scores/health", async (_req, res) => {
+    try {
+      const { errorMonitoring } = await import("./monitoring/errorMonitoring");
+      const stats = errorMonitoring.getErrorStats();
+      
+      // Filter for user-team-scores related errors
+      const userTeamScoresErrors = Array.from(stats.errorsByOperation.entries())
+        .filter(([operation]) => operation.includes('user-team-scores'))
+        .reduce((total, [, count]) => total + count, 0);
+      
+      const recentUserTeamScoresErrors = stats.recentErrors
+        .filter(error => error.operation.includes('user-team-scores'))
+        .length;
+      
+      // Health thresholds specific to user-team-scores
+      const errorThreshold = 50; // Max 50 errors total
+      const recentErrorThreshold = 10; // Max 10 recent errors
+      
+      const isHealthy = userTeamScoresErrors < errorThreshold && 
+                       recentUserTeamScoresErrors < recentErrorThreshold;
+      
+      const status = isHealthy ? 'healthy' : 'degraded';
+      const httpStatus = isHealthy ? 200 : 503;
+      
+      return res.status(httpStatus).json({
+        status,
+        service: 'user-team-scores',
+        errors: {
+          total: userTeamScoresErrors,
+          recent: recentUserTeamScoresErrors,
+          threshold: errorThreshold,
+          recentThreshold: recentErrorThreshold
+        },
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime()
+      });
+    } catch (error) {
+      return handleApiError(
+        error as Error,
+        res,
+        'get-user-team-scores-health',
+        { endpoint: '/api/monitoring/user-team-scores/health' }
+      );
+    }
+  });
+
+  app.get("/api/monitoring/errors/alerts", async (_req, res) => {
+    try {
+      const { errorMonitoring } = await import("./monitoring/errorMonitoring");
+      const limit = Math.min(100, Number(_req.query.limit) || 20);
+      const alerts = errorMonitoring.getRecentAlerts(limit);
+      return res.json({ alerts, total: alerts.length });
+    } catch (error) {
+      return handleApiError(
+        error as Error,
+        res,
+        'get-error-alerts',
+        { endpoint: '/api/monitoring/errors/alerts' }
+      );
+    }
   });
 
   // Session smoke test: increments a counter stored in the session
@@ -185,10 +415,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hashed = await hashPassword(password);
       const user = await storage.createUser({ username, password: hashed });
       req.login(user as any, (err) => {
-        if (err) return next(err);
+        if (err) {
+          try { withSource("auth").error({ err, userId: user.id }, "register req.login failed"); } catch {}
+          return next(err);
+        }
         return res.json({ id: user.id, username: user.username });
       });
     } catch (err) {
+      try { withSource("auth").error({ err, body: req.body }, "register failed"); } catch {}
       next(err);
     }
   });
@@ -204,10 +438,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ error: "Invalid payload", details: parsed.error.issues });
     }
     passport.authenticate("local", (err: any, user: any, info: any) => {
-      if (err) return next(err);
-      if (!user) return res.status(401).json({ error: info?.message || "Invalid credentials" });
+      if (err) {
+        try { withSource("auth").error({ err }, "login error"); } catch {}
+        return next(err);
+      }
+      if (!user) {
+        try { withSource("auth").warn({ info }, "login invalid credentials"); } catch {}
+        return res.status(401).json({ error: info?.message || "Invalid credentials" });
+      }
       req.login(user, (err2) => {
-        if (err2) return next(err2);
+        if (err2) {
+          try { withSource("auth").error({ err: err2, userId: (user as any)?.id }, "login req.login failed"); } catch {}
+          return next(err2);
+        }
         const u: any = user;
         return res.json({ id: u.id, username: u.username });
       });
@@ -512,17 +755,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // --- Phase 3: Summaries ---
-  const generateLimiter = rateLimit({ windowMs: 60 * 1000, max: 3 });
+  const generateLimiter = rateLimit({ 
+    windowMs: 60 * 1000, 
+    max: 3,
+    handler: (req, res) => {
+      const error = new RateLimitError('Summary generation rate limit exceeded', {
+        limit: 3,
+        windowMs: 60000,
+        clientIP: req.ip
+      });
+      return handleApiError(error, res, 'generate-rate-limit', {
+        clientIP: req.ip,
+        userAgent: req.get('User-Agent'),
+        teamId: req.params.teamId
+      });
+    }
+  });
 
   app.get("/api/summary/:teamId", async (req, res) => {
     try {
       const { teamId } = req.params;
+      
+      if (!teamId) {
+        throw new ValidationError('Team ID is required', { teamId });
+      }
+      
       const summary = await storage.getLatestSummaryByTeamId(teamId);
-      if (!summary) return res.status(404).json({ error: "No summary" });
+      if (!summary) {
+        throw new DatabaseError('No summary found for team', { teamId });
+      }
       return res.json(summary);
     } catch (error) {
-      console.error("Error fetching summary:", error);
-      return res.status(500).json({ error: "Internal server error" });
+      return handleApiError(
+        error as Error,
+        res,
+        'get-summary',
+        {
+          teamId: req.params.teamId,
+          userAgent: req.get('User-Agent'),
+          clientIP: req.ip
+        }
+      );
     }
   });
 
@@ -530,6 +803,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { teamId } = req.params;
       const { model, force } = req.body ?? {};
+      
+      if (!teamId) {
+        throw new ValidationError('Team ID is required', { teamId });
+      }
+      
       // Stub generation: create a placeholder summary entry
       const created = await storage.createSummary({
         teamId,
@@ -538,8 +816,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       return res.status(202).json(created);
     } catch (error) {
-      console.error("Error generating summary:", error);
-      return await sendFriendlyDbError(res, error, "generateSummary");
+      return handleApiError(
+        error as Error,
+        res,
+        'generate-summary',
+        {
+          teamId: req.params.teamId,
+          model: req.body?.model,
+          force: req.body?.force,
+          userAgent: req.get('User-Agent'),
+          clientIP: req.ip
+        }
+      );
     }
   });
 
@@ -712,6 +1000,171 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  // User Team Scores endpoint - returns scores for user's favorite teams
+  app.get(
+    "/api/user-team-scores",
+    apiGetLimiter,
+    authenticateFirebase,
+    validateUserTeamScoresQuery,
+    loadUserContext,
+    async (req, res) => {
+      try {
+        const logger = withSource('user-team-scores');
+        const requestId = res.locals?.requestId || Math.random().toString(36).substring(7);
+        
+        // Get user's favorite teams from context
+        const userTeamIds = req.userContext?.teamIds || [];
+        const userId = (req.user as any)?.uid;
+        
+        if (userTeamIds.length === 0) {
+          throw new NoFavoriteTeamError(
+            userId || 'unknown',
+            req.validated?.query?.sport || 'all'
+          );
+        }
+
+        const sport = req.validated?.query?.sport;
+        const limit = req.validated?.query?.limit || 10;
+        const startDateStr = req.validated?.query?.startDate;
+        const endDateStr = req.validated?.query?.endDate;
+        
+        let startDate: Date;
+        let endDate: Date;
+        
+        try {
+          startDate = startDateStr ? new Date(String(startDateStr)) : new Date(Date.now() - 48 * 60 * 60 * 1000);
+          endDate = endDateStr ? new Date(String(endDateStr)) : new Date(Date.now() + 1 * 60 * 60 * 1000);
+          
+          // Validate dates
+          if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+            throw new ValidationError('Invalid date format provided', {
+              startDate: startDateStr,
+              endDate: endDateStr
+            });
+          }
+          
+          if (startDate >= endDate) {
+            throw new ValidationError('Start date must be before end date', {
+              startDate: startDate.toISOString(),
+              endDate: endDate.toISOString()
+            });
+          }
+        } catch (error) {
+          if (error instanceof ValidationError) {
+            throw error;
+          }
+          throw new ValidationError('Invalid date parameters', {
+            startDate: startDateStr,
+            endDate: endDateStr,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+
+        // Filter user's teams by the requested sport
+        let filteredTeamIds = userTeamIds;
+        if (sport) {
+          const leagueFilter = sport.toUpperCase();
+          try {
+            const leagueTeams = await storage.getTeamsByLeague(leagueFilter);
+            const allowedSet = new Set(leagueTeams.map((t) => t.id));
+            filteredTeamIds = userTeamIds.filter((tid) => allowedSet.has(String(tid)));
+            
+            if (filteredTeamIds.length === 0) {
+              throw new NoFavoriteTeamError(
+                userId || 'unknown',
+                sport,
+                `User has no favorite teams in ${sport.toUpperCase()}`
+              );
+            }
+          } catch (error) {
+            if (error instanceof NoFavoriteTeamError) {
+              throw error;
+            }
+            
+            logger.error({
+              error: extractErrorInfo(error as Error),
+              context: { userId, sport, operation: 'getTeamsByLeague' }
+            }, 'Error filtering teams by league');
+            
+            throw new DatabaseError('Failed to filter teams by sport', {
+              sport,
+              userId,
+              operation: 'getTeamsByLeague'
+            });
+          }
+        }
+
+        // Fetch games for the filtered teams
+        const overallLimit = Math.min(500, limit * filteredTeamIds.length);
+        let games;
+        
+        try {
+          games = await storage.getGamesByTeamIds(filteredTeamIds, overallLimit, startDate, endDate);
+        } catch (error) {
+          logger.error({
+            error: extractErrorInfo(error as Error),
+            context: { 
+              userId, 
+              sport, 
+              teamIds: filteredTeamIds,
+              dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+              operation: 'getGamesByTeamIds'
+            }
+          }, 'Error fetching games');
+          
+          throw new ScoreFetchError('Unable to fetch game data at this time', {
+            teamIds: filteredTeamIds,
+            dateRange: { startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+            operation: 'getGamesByTeamIds'
+          });
+        }
+
+        // Deduplicate games (same game can appear for both teams)
+        const seen = new Set<string>();
+        games = games.filter((g) => (seen.has(g.id) ? false : (seen.add(g.id), true)));
+
+        // Sort by start time (most recent first)
+        games.sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
+
+        // Apply limit
+        const limitedGames = games.slice(0, limit);
+
+        // Log successful request
+        logger.info({
+          userId,
+          sport,
+          teamCount: filteredTeamIds.length,
+          gameCount: limitedGames.length,
+          requestId
+        }, 'Successfully fetched user team scores');
+
+        return res.json({
+          games: limitedGames,
+          userTeamIds: filteredTeamIds,
+          sport: sport || null,
+          dateRange: {
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString()
+          },
+          total: limitedGames.length,
+          requestId
+        });
+      } catch (error) {
+        return handleApiError(
+           error as Error,
+           res,
+           'user-team-scores',
+           {
+             userId: (req.user as any)?.uid,
+             sport: req.validated?.query?.sport,
+             userAgent: req.get('User-Agent'),
+             clientIP: req.ip
+           }
+         );
+      }
+    }
+  );
+
   app.get(
     "/api/scores/:gameId",
     apiGetLimiter,
@@ -722,8 +1175,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
     try {
       const gameId = req.validated?.params?.gameId ?? req.params.gameId;
+      
+      if (!gameId) {
+        throw new ValidationError('Game ID is required', { gameId });
+      }
+      
       const game = await storage.getGame(gameId);
-      if (!game) return res.status(404).json({ error: "Not found" });
+      if (!game) {
+        throw new DatabaseError('Game not found', { gameId });
+      }
 
       // Enforce team authorization when not in overview mode
       const mode = req.access?.mode ?? "overview";
@@ -733,13 +1193,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (mode !== "overview" && allowed.length > 0) {
         const isAuthorized = allowed.includes(String(game.homeTeamId)) || allowed.includes(String(game.awayTeamId));
         if (!isAuthorized) {
-          return res.status(403).json({ error: "Access denied", unauthorizedTeams: [game.homeTeamId, game.awayTeamId] });
+          throw new AuthenticationError('Access denied to game', { 
+            gameId, 
+            homeTeamId: game.homeTeamId, 
+            awayTeamId: game.awayTeamId,
+            authorizedTeams: allowed
+          });
         }
       }
       return res.json(game);
     } catch (error) {
-      console.error("Error fetching game:", error);
-      return res.status(500).json({ error: "Internal server error" });
+      return handleApiError(
+        error as Error,
+        res,
+        'get-game-scores',
+        {
+          gameId: req.params.gameId,
+          userId: (req.user as any)?.uid,
+          userAgent: req.get('User-Agent'),
+          clientIP: req.ip
+        }
+      );
     }
     },
   );
@@ -798,8 +1272,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const paged = games.slice(start, start + ps);
       return res.json({ items: paged, page: p, pageSize: ps, total });
     } catch (error) {
-      console.error("Error fetching schedule:", error);
-      return res.status(500).json({ error: "Internal server error" });
+      return handleApiError(
+        error as Error,
+        res,
+        'get-schedule',
+        {
+          userId: (req.user as any)?.uid,
+          sport: req.access?.sport,
+          teamIds: req.access?.authorizedTeamIds,
+          userAgent: req.get('User-Agent'),
+          clientIP: req.ip
+        }
+      );
     }
     },
   );
@@ -832,7 +1316,34 @@ export async function sendFriendlyDbError(res: any, error: any, action: string) 
     referencedTable = match[3];
   }
 
-  // Structured server-side logging for better debugging
+  // Enhanced structured logging for database errors
+  const logger = withSource('database-error');
+  const dbError = new DatabaseError(
+    `Database operation failed: ${action}`,
+    {
+      operation: action,
+      table: table || 'unknown',
+      constraint: constraint || 'unknown',
+      column: column || 'unknown',
+      errorCode: code || 'unknown',
+      errorDetail: detail || 'No details available',
+      schema: schema || 'unknown'
+    }
+  );
+  
+  logError(logger, dbError, {
+    operation: action,
+    table,
+    constraint,
+    column,
+    errorCode: code,
+    errorDetail: detail,
+    schema,
+    value,
+    referencedTable
+  });
+
+  // Structured server-side logging for better debugging (keeping for backward compatibility)
   console.error(
     `[DB Error] action=${action} code=${code ?? "unknown"} constraint=${constraint ?? ""} table=${table ?? ""} column=${column ?? ""} detail=${detail ?? ""}`,
   );

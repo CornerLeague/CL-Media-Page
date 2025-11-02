@@ -48,3 +48,39 @@ export interface IScoreSource {
   fetchBoxScore?(gameId: string): Promise<BoxScore>;
   fetchFeaturedGames?(sport: string, limit: number): Promise<ScheduleGame[]>; // For overview mode
 }
+
+// User-specific interfaces
+export interface UserTeamScoresOptions {
+  firebaseUid: string;
+  sport?: string;
+  limit?: number;
+  mode?: 'schedule' | 'live' | 'featured';
+  startDate?: string; // ISO date string
+  endDate?: string;   // ISO date string
+}
+
+export interface UserFavoriteTeam {
+  teamId: string;
+  sport: string;
+}
+
+export interface UserTeamScoresResult {
+  games: import("@shared/schema").Game[];
+  userProfile: import("@shared/schema").UserProfile;
+  favoriteTeams: UserFavoriteTeam[];
+  cacheHit: boolean;
+  source: string;
+}
+
+// User-specific error class
+export class UserTeamScoresError extends Error {
+  constructor(
+    message: string,
+    public code: 'USER_NOT_FOUND' | 'NO_FAVORITE_TEAMS' | 'INVALID_SPORT' | 'FETCH_FAILED',
+    public firebaseUid?: string,
+    public sport?: string
+  ) {
+    super(message);
+    this.name = 'UserTeamScoresError';
+  }
+}

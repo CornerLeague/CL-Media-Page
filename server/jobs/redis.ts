@@ -2,9 +2,9 @@ import { config } from "../config";
 import IORedis, { Redis } from "ioredis";
 
 export function createRedis(): Redis {
-  // If REDIS_URL is not provided, return a disabled stub to avoid
-  // accidental connections to localhost during development/benchmarks.
-  if (!config.redisUrl) {
+  // If REDIS_URL is not provided OR jobs are disabled, return a disabled stub
+  // to avoid accidental connections to localhost during development.
+  if (!config.redisUrl || !config.jobsEnabled) {
     const disabledClient = {
       status: "mock-disabled",
       // No-op connect/quit/disconnect to satisfy callers that conditionally manage lifecycle

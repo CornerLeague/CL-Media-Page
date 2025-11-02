@@ -30,9 +30,10 @@ import type {
   InsertNewsSource,
   ArticleClassification,
   InsertArticleClassification,
-} from "@shared/schema";
+  GameScoreData,
+} from "../shared/schema";
 import { db } from "./db";
-import * as schema from "@shared/schema";
+import * as schema from "../shared/schema";
 import { eq, and, or, lt, gt, gte, lte, inArray, desc, sql } from "drizzle-orm";
 import { metrics } from "./metrics";
 import { config } from "./config";
@@ -267,6 +268,187 @@ export class PgStorage implements IStorage {
     return rows;
   }
 
+  async getLatestTeamScore(teamId: string): Promise<GameScoreData | undefined> {
+    const log = withSource("db");
+    
+    // Input validation
+    if (!teamId || typeof teamId !== 'string' || teamId.trim() === '') {
+      log.warn({ teamId }, "getLatestTeamScore: invalid teamId provided");
+      throw new Error("Invalid teamId: must be a non-empty string");
+    }
+
+    try {
+      log.debug({ teamId }, "getLatestTeamScore: fetching latest score for team");
+
+      const rows = await execWithMetrics("select_latest_score", "games", async () => {
+        return await db!
+          .select({
+            gameId: schema.games.id,
+            homeTeamId: schema.games.homeTeamId,
+            awayTeamId: schema.games.awayTeamId,
+            homePts: schema.games.homePts,
+            awayPts: schema.games.awayPts,
+            status: schema.games.status,
+            period: schema.games.period,
+            timeRemaining: schema.games.timeRemaining,
+            startTime: schema.games.startTime,
+            cachedAt: schema.games.cachedAt,
+            homeTeamName: sql<string>`home_team.name`,
+            homeTeamCode: sql<string>`home_team.code`,
+            homeTeamLeague: sql<string>`home_team.league`,
+            awayTeamName: sql<string>`away_team.name`,
+            awayTeamCode: sql<string>`away_team.code`,
+            awayTeamLeague: sql<string>`away_team.league`,
+          })
+          .from(schema.games)
+          .leftJoin(sql`teams as home_team`, sql`home_team.id = ${schema.games.homeTeamId}`)
+          .leftJoin(sql`teams as away_team`, sql`away_team.id = ${schema.games.awayTeamId}`)
+          .where(or(eq(schema.games.homeTeamId, teamId), eq(schema.games.awayTeamId, teamId)))
+          .orderBy(desc(schema.games.startTime))
+          .limit(1);
+      }, { teamId });
+
+      if (rows.length === 0) {
+        log.debug({ teamId }, "getLatestTeamScore: no games found for team");
+        return undefined;
+      }
+
+      const game = rows[0];
+      
+      // Validate that we have complete team data
+      if (!game.homeTeamName || !game.awayTeamName || !game.homeTeamCode || !game.awayTeamCode) {
+        log.warn({ 
+          teamId, 
+          gameId: game.gameId,
+          homeTeamData: { name: game.homeTeamName, code: game.homeTeamCode },
+          awayTeamData: { name: game.awayTeamName, code: game.awayTeamCode }
+        }, "getLatestTeamScore: incomplete team data in game record");
+        throw new Error(`Incomplete team data for game ${game.gameId}`);
+      }
+
+      const isHomeGame = game.homeTeamId === teamId;
+      
+      // Transform the raw data into GameScoreData format
+      const gameScoreData: GameScoreData = {
+        gameId: game.gameId,
+        homeTeam: {
+          id: game.homeTeamId,
+          name: game.homeTeamName,
+          code: game.homeTeamCode,
+          league: game.homeTeamLeague,
+          score: game.homePts,
+        },
+        awayTeam: {
+          id: game.awayTeamId,
+          name: game.awayTeamName,
+          code: game.awayTeamCode,
+          league: game.awayTeamLeague,
+          score: game.awayPts,
+        },
+        status: game.status,
+        period: game.period,
+        timeRemaining: game.timeRemaining,
+        startTime: game.startTime,
+        isHomeGame,
+        opponent: isHomeGame ? {
+          id: game.awayTeamId,
+          name: game.awayTeamName,
+          code: game.awayTeamCode,
+          league: game.awayTeamLeague,
+          score: game.awayPts,
+        } : {
+          id: game.homeTeamId,
+          name: game.homeTeamName,
+          code: game.homeTeamCode,
+          league: game.homeTeamLeague,
+          score: game.homePts,
+        },
+        teamScore: isHomeGame ? game.homePts : game.awayPts,
+        cachedAt: game.cachedAt,
+      };
+
+      log.debug({ 
+        teamId, 
+        gameId: game.gameId, 
+        isHomeGame, 
+        status: game.status,
+        teamScore: gameScoreData.teamScore,
+        opponentScore: gameScoreData.opponent.score
+      }, "getLatestTeamScore: successfully retrieved team score");
+
+      return gameScoreData;
+    } catch (error) {
+      log.error({ 
+        err: error, 
+        teamId,
+        operation: "getLatestTeamScore"
+      }, "getLatestTeamScore: failed to retrieve team score");
+      
+      // Re-throw the error to maintain the existing API contract
+      throw error;
+    }
+  }
+
+  async hasScoreChanged(gameId: string, homePts: number, awayPts: number): Promise<boolean> {
+    const log = withSource("db");
+    
+    // Input validation
+    if (!gameId || typeof gameId !== 'string' || gameId.trim() === '') {
+      log.warn({ gameId }, "hasScoreChanged: invalid gameId provided");
+      throw new Error("Invalid gameId: must be a non-empty string");
+    }
+
+    if (typeof homePts !== 'number' || typeof awayPts !== 'number') {
+      log.warn({ homePts, awayPts }, "hasScoreChanged: invalid score values provided");
+      throw new Error("Invalid scores: homePts and awayPts must be numbers");
+    }
+
+    try {
+      log.debug({ gameId, homePts, awayPts }, "hasScoreChanged: checking score change for game");
+
+      const rows = await execWithMetrics("select_game_scores", "games", async () => {
+        return await db!
+          .select({
+            homePts: schema.games.homePts,
+            awayPts: schema.games.awayPts,
+          })
+          .from(schema.games)
+          .where(eq(schema.games.id, gameId))
+          .limit(1);
+      }, { gameId });
+
+      if (rows.length === 0) {
+        log.debug({ gameId }, "hasScoreChanged: game not found, treating as score changed");
+        return true; // If game doesn't exist, consider it a change
+      }
+
+      const currentGame = rows[0];
+      const hasChanged = currentGame.homePts !== homePts || currentGame.awayPts !== awayPts;
+      
+      log.debug({ 
+        gameId, 
+        currentHomePts: currentGame.homePts,
+        currentAwayPts: currentGame.awayPts,
+        newHomePts: homePts,
+        newAwayPts: awayPts,
+        hasChanged
+      }, "hasScoreChanged: score comparison completed");
+
+      return hasChanged;
+    } catch (error) {
+      log.error({ 
+        err: error, 
+        gameId,
+        homePts,
+        awayPts,
+        operation: "hasScoreChanged"
+      }, "hasScoreChanged: failed to check score change");
+      
+      // Re-throw the error to maintain the existing API contract
+      throw error;
+    }
+  }
+
   async deleteOldGames(_olderThan: Date): Promise<void> {
     // Implement with raw SQL once needed
   }
@@ -423,6 +605,83 @@ export class PgStorage implements IStorage {
         .returning();
     }, { firebaseUid });
     return rows[0];
+  }
+
+  async getUserFavoriteTeamBySport(
+    firebaseUid: string,
+    sport: string,
+  ): Promise<{ teamId: string; sport: string }[]> {
+    try {
+      const rows = await execWithMetrics("select", "user_profiles", async () => {
+        return await db!
+          .select({
+            favoriteTeams: schema.userProfiles.favoriteTeams,
+          })
+          .from(schema.userProfiles)
+          .where(eq(schema.userProfiles.firebaseUid, firebaseUid));
+      }, { firebaseUid, sport });
+
+      const profile = rows[0];
+      if (!profile || !profile.favoriteTeams || profile.favoriteTeams.length === 0) {
+        return [];
+      }
+
+      // Get team details for all favorite teams
+      const teamRows = await execWithMetrics("select", "teams", async () => {
+        return await db!
+          .select({
+            id: schema.teams.id,
+            league: schema.teams.league,
+          })
+          .from(schema.teams)
+          .where(inArray(schema.teams.id, profile.favoriteTeams!));
+      }, { teamIds: profile.favoriteTeams });
+
+      const favoriteTeams: { teamId: string; sport: string }[] = [];
+      
+      for (const team of teamRows) {
+        // Map league to sport (similar to ScoresAgent implementation)
+        let teamSport: string;
+        switch (team.league) {
+          case 'NFL':
+            teamSport = 'football';
+            break;
+          case 'NBA':
+            teamSport = 'basketball';
+            break;
+          case 'MLB':
+            teamSport = 'baseball';
+            break;
+          case 'NHL':
+            teamSport = 'hockey';
+            break;
+          case 'MLS':
+            teamSport = 'soccer';
+            break;
+          default:
+            teamSport = team.league.toLowerCase();
+        }
+
+        if (teamSport === sport) {
+          favoriteTeams.push({ teamId: team.id, sport: teamSport });
+        }
+      }
+
+      return favoriteTeams;
+    } catch (error) {
+      // Import error handling utilities at the top of the file
+      const { DatabaseError, NoFavoriteTeamError } = await import("./types/errors");
+      const { classifyDatabaseError } = await import("./utils/databaseErrorHandling");
+      
+      // Check if this is a database connection error
+      if (error instanceof DatabaseError) {
+        throw error;
+      }
+      
+      // Classify and throw appropriate error
+      const dbError = classifyDatabaseError(error, 'getUserFavoriteTeamBySport', { firebaseUid, sport });
+      throw dbError;
+    }
   }
 
   // Articles

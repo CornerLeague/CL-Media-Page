@@ -76,6 +76,35 @@ const jobFailuresTotal = new Counter({
   registers: [register],
 });
 
+// Error monitoring metrics
+const userTeamScoresErrorsTotal = new Counter({
+  name: 'user_team_scores_errors_total',
+  help: 'Total errors in user team scores feature',
+  labelNames: ['error_code', 'error_type', 'severity', 'operation'],
+  registers: [register],
+});
+
+const errorRatePerMinute = new Gauge({
+  name: 'user_team_scores_error_rate_per_minute',
+  help: 'Current error rate per minute for user team scores',
+  labelNames: ['error_type'],
+  registers: [register],
+});
+
+const criticalErrorsTotal = new Counter({
+  name: 'user_team_scores_critical_errors_total',
+  help: 'Total critical errors in user team scores feature',
+  labelNames: ['error_type', 'operation'],
+  registers: [register],
+});
+
+const alertsTriggeredTotal = new Counter({
+  name: 'user_team_scores_alerts_triggered_total',
+  help: 'Total alerts triggered for user team scores errors',
+  labelNames: ['alert_type', 'severity'],
+  registers: [register],
+});
+
 // Helpers
 function observeDbQuery(operation: string, table: string, durationMs: number, rows: number) {
   try {
@@ -98,6 +127,39 @@ function recordCacheEvent(group: string, hit: boolean) {
   } catch { /* no-op */ }
 }
 
+// Error monitoring helpers
+function recordUserTeamScoresError(
+  errorCode: string,
+  errorType: string,
+  severity: string,
+  operation: string
+) {
+  userTeamScoresErrorsTotal.inc({
+    error_code: errorCode,
+    error_type: errorType,
+    severity,
+    operation
+  });
+  
+  if (severity === 'critical' || severity === 'high') {
+    criticalErrorsTotal.inc({
+      error_type: errorType,
+      operation
+    });
+  }
+}
+
+function updateErrorRate(errorType: string, rate: number) {
+  errorRatePerMinute.set({ error_type: errorType }, rate);
+}
+
+function recordAlert(alertType: string, severity: string) {
+  alertsTriggeredTotal.inc({
+    alert_type: alertType,
+    severity
+  });
+}
+
 async function getMetricsContent(): Promise<string> {
   return await register.metrics();
 }
@@ -113,7 +175,14 @@ export const metrics = {
   validationErrorsTotal,
   jobExecutionDurationMs,
   jobFailuresTotal,
+  userTeamScoresErrorsTotal,
+  errorRatePerMinute,
+  criticalErrorsTotal,
+  alertsTriggeredTotal,
   observeDbQuery,
   recordCacheEvent,
+  recordUserTeamScoresError,
+  updateErrorRate,
+  recordAlert,
   getMetricsContent,
 } as const;

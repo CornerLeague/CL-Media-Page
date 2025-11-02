@@ -45,7 +45,7 @@ app.options("*", cors(corsOptions));
 
 // Phase 2: session middleware with Postgres-backed store (fallback to memory)
 const PgSession = connectPgSimple(session);
-const sessionStore = config.databaseUrl
+const sessionStore = (!config.useMemStorage && config.databaseUrl)
   ? new PgSession({
       conString: config.databaseUrl,
       createTableIfMissing: true,
@@ -139,7 +139,8 @@ app.use((req, res, next) => {
   bootLog.info(
     {
       jobsEnabled: config.jobsEnabled,
-      databaseConfigured: !!config.databaseUrl,
+      databaseConfigured: !!config.databaseUrl && !config.useMemStorage,
+      memStorageForced: !!config.useMemStorage,
       redisConfigured: !!config.redisUrl,
       firebaseConfigured:
         !!(
@@ -183,16 +184,52 @@ app.use((req, res, next) => {
   const { attachDevAgentRoutes } = await import("./dev/agentRoutes");
   attachDevAgentRoutes(app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
+    // Specialized CSRF error with dev hint
     if (err && err.code === "EBADCSRFTOKEN") {
-      return res.status(403).json({ error: "Invalid CSRF token" });
+      const body: any = { error: "Invalid CSRF token" };
+      if (config.isDev) {
+        body.hint = "Include the CSRF token from the 'csrfToken' cookie in 'x-csrf-token' header.";
+      }
+      return res.status(403).json(body);
     }
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
 
-    res.status(status).json({ message });
-    logger.error({ err }, "unhandled error");
-    throw err;
+    const status = err?.status ?? err?.statusCode ?? 500;
+    const message = err?.message ?? "Internal Server Error";
+    const requestId = (res as any).locals?.requestId;
+
+    // Compact, useful diagnostics without leaking sensitive data
+    const body: any = {
+      message,
+      requestId,
+    };
+
+    if (config.isDev) {
+      body.code = err?.code;
+      body.type = err?.name;
+      body.path = req.path;
+      body.method = req.method;
+      body.timestamp = new Date().toISOString();
+      body.userAgent = req.headers["user-agent"] || undefined;
+      try {
+        const stack = String(err?.stack || "");
+        body.stack = stack.split("\n").slice(0, 6).join("\n");
+      } catch {}
+    }
+
+    // Log with structured context; do not rethrow
+    logger.error(
+      {
+        err,
+        requestId,
+        status,
+        method: req.method,
+        path: req.path,
+      },
+      "unhandled error"
+    );
+
+    return res.status(status).json(body);
   });
 
   // importantly only setup vite in development and after

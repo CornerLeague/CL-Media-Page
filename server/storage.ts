@@ -27,7 +27,8 @@ import {
   type InsertNewsSource,
   type ArticleClassification,
   type InsertArticleClassification,
-} from "@shared/schema";
+  type GameScoreData,
+} from "../shared/schema";
 import { randomUUID } from "crypto";
 import { PgStorage } from "./pgStorage";
 import { config } from "./config";
@@ -68,6 +69,8 @@ export interface IStorage {
   getGame(id: string): Promise<Game | undefined>;
   getGamesByTeamId(teamId: string, limit?: number, startDate?: Date, endDate?: Date): Promise<Game[]>;
   getGamesByTeamIds(teamIds: string[], limit?: number, startDate?: Date, endDate?: Date): Promise<Game[]>;
+  getLatestTeamScore(teamId: string): Promise<GameScoreData | undefined>;
+  hasScoreChanged(gameId: string, homePts: number, awayPts: number): Promise<boolean>;
   deleteOldGames(olderThan: Date): Promise<void>;
 
   // Updates
@@ -101,6 +104,7 @@ export interface IStorage {
   getUserProfile(firebaseUid: string): Promise<UserProfile | undefined>;
   createUserProfile(profile: InsertUserProfile): Promise<UserProfile>;
   updateUserProfile(firebaseUid: string, profile: Partial<InsertUserProfile>): Promise<UserProfile | undefined>;
+  getUserFavoriteTeamBySport(firebaseUid: string, sport: string): Promise<{ teamId: string; sport: string }[]>;
 
   // Articles
   createArticle(article: InsertArticle): Promise<Article>;
@@ -345,6 +349,116 @@ export class MemStorage implements IStorage {
     }
   }
 
+  async getLatestTeamScore(teamId: string): Promise<GameScoreData | undefined> {
+    try {
+      // Input validation
+      if (!teamId || typeof teamId !== 'string') {
+        console.warn('[MemStorage] getLatestTeamScore: Invalid teamId provided');
+        return undefined;
+      }
+
+      console.debug(`[MemStorage] Fetching latest team score for teamId: ${teamId}`);
+
+      // Find the latest game for the team
+      const teamGames = Array.from(this.games.values())
+        .filter((g) => g.homeTeamId === teamId || g.awayTeamId === teamId)
+        .sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
+
+      if (teamGames.length === 0) {
+        console.debug(`[MemStorage] No games found for teamId: ${teamId}`);
+        return undefined;
+      }
+
+      const latestGame = teamGames[0];
+      
+      // Get team information
+      const homeTeam = this.teams.get(latestGame.homeTeamId);
+      const awayTeam = this.teams.get(latestGame.awayTeamId);
+
+      if (!homeTeam || !awayTeam) {
+        console.warn(`[MemStorage] Missing team data for game ${latestGame.id}: homeTeam=${!!homeTeam}, awayTeam=${!!awayTeam}`);
+        return undefined;
+      }
+
+      const isHomeGame = latestGame.homeTeamId === teamId;
+      const opponent = isHomeGame ? awayTeam : homeTeam;
+      const teamScore = isHomeGame ? latestGame.homePts : latestGame.awayPts;
+
+      const result = {
+        gameId: latestGame.id,
+        homeTeam: {
+          id: homeTeam.id,
+          name: homeTeam.name,
+          code: homeTeam.code,
+          league: homeTeam.league,
+          score: latestGame.homePts,
+        },
+        awayTeam: {
+          id: awayTeam.id,
+          name: awayTeam.name,
+          code: awayTeam.code,
+          league: awayTeam.league,
+          score: latestGame.awayPts,
+        },
+        status: latestGame.status,
+        period: latestGame.period,
+        timeRemaining: latestGame.timeRemaining,
+        startTime: latestGame.startTime,
+        isHomeGame,
+        opponent: {
+          id: opponent.id,
+          name: opponent.name,
+          code: opponent.code,
+          league: opponent.league,
+          score: isHomeGame ? latestGame.awayPts : latestGame.homePts,
+        },
+        teamScore,
+        cachedAt: latestGame.cachedAt,
+      };
+
+      console.debug(`[MemStorage] Successfully retrieved latest team score for teamId: ${teamId}, gameId: ${latestGame.id}`);
+      return result;
+    } catch (error) {
+      console.error(`[MemStorage] Error fetching latest team score for teamId ${teamId}:`, error);
+      throw error;
+    }
+  }
+
+  async hasScoreChanged(gameId: string, homePts: number, awayPts: number): Promise<boolean> {
+    try {
+      // Input validation
+      if (!gameId || typeof gameId !== 'string') {
+        console.warn('[MemStorage] hasScoreChanged: Invalid gameId provided');
+        throw new Error("Invalid gameId: must be a non-empty string");
+      }
+
+      if (typeof homePts !== 'number' || typeof awayPts !== 'number') {
+        console.warn('[MemStorage] hasScoreChanged: Invalid score values provided');
+        throw new Error("Invalid scores: homePts and awayPts must be numbers");
+      }
+
+      console.debug(`[MemStorage] Checking score change for gameId: ${gameId}, homePts: ${homePts}, awayPts: ${awayPts}`);
+
+      // Get the current game from storage
+      const currentGame = this.games.get(gameId);
+      
+      if (!currentGame) {
+        console.debug(`[MemStorage] Game not found for gameId: ${gameId}, treating as score changed`);
+        return true; // If game doesn't exist, consider it a change
+      }
+
+      // Compare the scores
+      const hasChanged = currentGame.homePts !== homePts || currentGame.awayPts !== awayPts;
+      
+      console.debug(`[MemStorage] Score comparison for gameId ${gameId}: current(${currentGame.homePts}-${currentGame.awayPts}) vs new(${homePts}-${awayPts}), changed: ${hasChanged}`);
+      
+      return hasChanged;
+    } catch (error) {
+      console.error(`[MemStorage] Error checking score change for gameId ${gameId}:`, error);
+      throw error;
+    }
+  }
+
   // Updates
   async createUpdate(insertUpdate: InsertUpdate): Promise<Update> {
     const id = randomUUID();
@@ -518,6 +632,51 @@ export class MemStorage implements IStorage {
     };
     this.userProfiles.set(firebaseUid, updatedProfile);
     return updatedProfile;
+  }
+
+  async getUserFavoriteTeamBySport(
+    firebaseUid: string,
+    sport: string,
+  ): Promise<{ teamId: string; sport: string }[]> {
+    const profile = this.userProfiles.get(firebaseUid);
+    if (!profile || !profile.favoriteTeams) {
+      return [];
+    }
+
+    const favoriteTeams: { teamId: string; sport: string }[] = [];
+    
+    for (const teamId of profile.favoriteTeams) {
+      const team = this.teams.get(teamId);
+      if (team) {
+        // Map league to sport (similar to ScoresAgent implementation)
+        let teamSport: string;
+        switch (team.league) {
+          case 'NFL':
+            teamSport = 'football';
+            break;
+          case 'NBA':
+            teamSport = 'basketball';
+            break;
+          case 'MLB':
+            teamSport = 'baseball';
+            break;
+          case 'NHL':
+            teamSport = 'hockey';
+            break;
+          case 'MLS':
+            teamSport = 'soccer';
+            break;
+          default:
+            teamSport = team.league.toLowerCase();
+        }
+
+        if (teamSport.toLowerCase() === sport.toLowerCase()) {
+          favoriteTeams.push({ teamId, sport });
+        }
+      }
+    }
+
+    return favoriteTeams;
   }
 
   // Articles
@@ -716,4 +875,4 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage: IStorage = config.databaseUrl && db ? new PgStorage() : new MemStorage();
+export const storage: IStorage = !config.useMemStorage && config.databaseUrl && db ? new PgStorage() : new MemStorage();

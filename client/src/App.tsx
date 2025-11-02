@@ -11,6 +11,8 @@ import { TopNavBar } from "@/components/TopNavBar";
 import { AISummarySection } from "@/components/AISummarySection";
 import { RecentUpdatesSection } from "@/components/RecentUpdatesSection";
 import { FanExperiencesSection } from "@/components/FanExperiencesSection";
+import { ScoreNotifications } from "@/components/ScoreNotifications";
+import RealTimeDemo from "@/pages/RealTimeDemo";
 import Login from "@/pages/login";
 import Onboarding from "@/pages/onboarding";
 import Settings from "@/pages/settings";
@@ -245,6 +247,14 @@ function App() {
                     </>
                   </ProtectedRoute>
                 </Route>
+                <Route path="/demo">
+                  <ProtectedRoute>
+                    <>
+                      <TopNavBar />
+                      <RealTimeDemo />
+                    </>
+                  </ProtectedRoute>
+                </Route>
                 <Route path="/">
                   <ProtectedRoute>
                     <HomePage />
@@ -253,6 +263,11 @@ function App() {
                 <Route component={NotFound} />
               </Switch>
               <Toaster />
+              <ScoreNotifications 
+                enableAutoHide={true}
+                maxNotifications={3}
+                position="top-right"
+              />
               {isDevHmr && (
                 <div
                   className="fixed bottom-2 right-2 z-50 px-2 py-1 rounded bg-emerald-600 text-white text-xs shadow"

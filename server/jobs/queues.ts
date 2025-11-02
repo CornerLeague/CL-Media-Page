@@ -16,7 +16,7 @@ function baseQueueOptions(): QueueOptions {
 let queuesObj: any;
 let queueEventsObj: any;
 
-if (!config.redisUrl) {
+if (!config.redisUrl || !config.jobsEnabled) {
   // When REDIS_URL is not configured, create lightweight stubs to avoid connecting in dev
   const noop = async (..._args: any[]) => undefined as any;
   const noopArray = async () => [] as any[];
