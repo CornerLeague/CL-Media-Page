@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo, useMemo, useCallback, lazy, Suspense } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,10 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useRealTimeScoreUpdates } from '@/hooks/useRealTimeScoreUpdates';
 import { useUserTeamScores } from '@/hooks/useUserTeamScores';
-import { RealTimeUpdates } from '@/components/RealTimeUpdates';
+import { WebSocketDemo } from '@/components/WebSocketDemo';
+import { ScoreUpdatesTest } from '@/components/ScoreUpdatesTest';
+// Lazy load the RealTimeUpdates component for better performance
+const RealTimeUpdates = lazy(() => import('@/components/RealTimeUpdates'));
 import { 
   Activity, 
   Wifi, 
@@ -22,7 +25,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 
-const RealTimeDemo: React.FC = () => {
+const RealTimeDemo: React.FC = memo(() => {
   const realTimeUpdates = useRealTimeScoreUpdates({
     sports: ['NFL', 'NBA', 'MLB', 'NHL'],
     enableNotifications: false,
@@ -68,7 +71,8 @@ const RealTimeDemo: React.FC = () => {
     enableRealTimeUpdates: true,
   });
 
-  const getConnectionStatusColor = (state: string) => {
+  // Memoize connection status color calculation
+  const getConnectionStatusColor = useCallback((state: string) => {
     switch (state) {
       case 'connected': return 'bg-green-500';
       case 'connecting': return 'bg-yellow-500';
@@ -76,11 +80,23 @@ const RealTimeDemo: React.FC = () => {
       case 'reconnecting': return 'bg-orange-500';
       default: return 'bg-gray-500';
     }
-  };
+  }, []);
 
-  const formatTimestamp = (timestamp: string) => {
+  // Memoize timestamp formatting
+  const formatTimestamp = useCallback((timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString();
-  };
+  }, []);
+
+  // Memoize connection status color for current state
+  const currentConnectionStatusColor = useMemo(() => 
+    getConnectionStatusColor(connectionState), 
+    [connectionState, getConnectionStatusColor]
+  );
+
+  // Memoize formatted connected since time
+  const formattedConnectedSince = useMemo(() => {
+    return updateStats.connectedSince ? formatTimestamp(updateStats.connectedSince) : 'Not connected';
+  }, [updateStats.connectedSince, formatTimestamp]);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -92,7 +108,7 @@ const RealTimeDemo: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className={`w-3 h-3 rounded-full ${getConnectionStatusColor(connectionState)}`} />
+          <div className={`w-3 h-3 rounded-full ${currentConnectionStatusColor}`} />
           <span className="text-sm font-medium capitalize">{connectionState}</span>
         </div>
       </div>
@@ -273,7 +289,7 @@ const RealTimeDemo: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Connected Since</p>
                 <p className="text-sm font-bold">
-                  {updateStats.connectedSince ? formatTimestamp(updateStats.connectedSince) : 'Not connected'}
+                  {formattedConnectedSince}
                 </p>
               </div>
               <Wifi className="w-8 h-8 text-muted-foreground" />
@@ -438,11 +454,26 @@ const RealTimeDemo: React.FC = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <RealTimeUpdates />
+          <Suspense fallback={
+            <div className="flex items-center justify-center p-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <span className="ml-2 text-muted-foreground">Loading real-time updates...</span>
+            </div>
+          }>
+            <RealTimeUpdates />
+          </Suspense>
         </CardContent>
       </Card>
+
+      {/* WebSocket Demo Section */}
+      <WebSocketDemo />
+
+      {/* Score Updates Test Section */}
+      <ScoreUpdatesTest />
     </div>
   );
-};
+});
+
+RealTimeDemo.displayName = 'RealTimeDemo';
 
 export default RealTimeDemo;

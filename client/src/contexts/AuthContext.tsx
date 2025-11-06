@@ -1,10 +1,12 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { fetchCsrf } from '@/lib/csrf';
+import { getFirebaseAuth } from '@/lib/firebaseClient';
+import { isDevHeaderAllowed, getDevUid } from '@/lib/devAuth';
 
 interface AuthUser {
-  id: number;
-  username: string;
+  id: string;
+  username?: string;
 }
 
 interface AuthContextType {
@@ -35,12 +37,42 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const refresh = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/me', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data);
+      // Drive auth from Firebase client state
+      const auth = getFirebaseAuth();
+      const firebaseUser = auth?.currentUser;
+      if (firebaseUser) {
+        setUser({ id: firebaseUser.uid, username: firebaseUser.email ?? undefined });
       } else {
-        setUser(null);
+        // Wait briefly for Firebase to load user if just signed in
+        const waitedUser = await new Promise<import('firebase/auth').User | null>((resolve) => {
+          try {
+            const unsubscribe = (auth as any)?.onAuthStateChanged?.((u: any) => {
+              try { unsubscribe(); } catch {}
+              resolve(u);
+            });
+          } catch {
+            resolve(null);
+          }
+        });
+        if (waitedUser) {
+          setUser({ id: waitedUser.uid, username: waitedUser.email ?? undefined });
+        } else {
+          // Dev override: if enabled and devUid is present, treat as authenticated
+          try {
+            if (isDevHeaderAllowed()) {
+              const devUid = getDevUid();
+              if (devUid) {
+                setUser({ id: devUid });
+              } else {
+                setUser(null);
+              }
+            } else {
+              setUser(null);
+            }
+          } catch {
+            setUser(null);
+          }
+        }
       }
     } catch {
       setUser(null);
@@ -58,8 +90,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const signOut = async () => {
     try {
-      await apiRequest('POST', '/api/auth/logout');
+      // Sign out from Firebase and clear any server session cookie
+      try {
+        const auth = getFirebaseAuth();
+        await (auth?.signOut?.() as Promise<void>);
+      } catch {}
+      try {
+        await apiRequest('POST', '/api/auth/logout');
+      } catch {}
       setUser(null);
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage?.removeItem?.('devUid');
+        }
+      } catch {}
       window.location.href = '/login';
     } catch (error) {
       console.error('Error signing out:', error);

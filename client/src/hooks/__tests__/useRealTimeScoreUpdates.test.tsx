@@ -1,36 +1,37 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useRealTimeScoreUpdates } from '../useRealTimeScoreUpdates';
 import { useWebSocket } from '../useWebSocket';
 import type { UserTeamScoreUpdate, UserTeamStatusChange } from '../useWebSocket';
 
 // Mock the useWebSocket hook
-jest.mock('../useWebSocket');
-const mockUseWebSocket = useWebSocket as jest.MockedFunction<typeof useWebSocket>;
+vi.mock('../useWebSocket');
+const mockUseWebSocket = vi.mocked(useWebSocket);
 
 // Mock audio context
 const mockAudioContext = {
-  createOscillator: jest.fn(() => ({
-    connect: jest.fn(),
-    frequency: { setValueAtTime: jest.fn() },
+  createOscillator: vi.fn(() => ({
+    connect: vi.fn(),
+    frequency: { setValueAtTime: vi.fn() },
     type: 'sine',
-    start: jest.fn(),
-    stop: jest.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
   })),
-  createGain: jest.fn(() => ({
-    connect: jest.fn(),
+  createGain: vi.fn(() => ({
+    connect: vi.fn(),
     gain: {
-      setValueAtTime: jest.fn(),
-      exponentialRampToValueAtTime: jest.fn(),
+      setValueAtTime: vi.fn(),
+      exponentialRampToValueAtTime: vi.fn(),
     },
   })),
   destination: {},
   currentTime: 0,
-  close: jest.fn(),
+  close: vi.fn(),
 };
 
 // Mock Notification API
-const mockNotification = jest.fn();
+const mockNotification = vi.fn();
 Object.defineProperty(window, 'Notification', {
   value: mockNotification,
   configurable: true,
@@ -40,13 +41,13 @@ Object.defineProperty(window.Notification, 'permission', {
   configurable: true,
 });
 Object.defineProperty(window.Notification, 'requestPermission', {
-  value: jest.fn().mockResolvedValue('granted'),
+  value: vi.fn().mockResolvedValue('granted'),
   configurable: true,
 });
 
 // Mock AudioContext
 Object.defineProperty(window, 'AudioContext', {
-  value: jest.fn(() => mockAudioContext),
+  value: vi.fn(() => mockAudioContext),
   configurable: true,
 });
 
@@ -65,16 +66,16 @@ describe('useRealTimeScoreUpdates', () => {
     mockWebSocketReturn = {
       isConnected: false,
       state: 'disconnected',
-      connect: jest.fn(),
-      disconnect: jest.fn(),
-      subscribeToUserTeams: jest.fn(),
-      unsubscribeFromUserTeams: jest.fn(),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      subscribeToUserTeams: vi.fn(),
+      unsubscribeFromUserTeams: vi.fn(),
     };
 
     mockUseWebSocket.mockReturnValue(mockWebSocketReturn);
 
     // Clear all mocks
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   const wrapper = ({ children }: { children: React.ReactNode }) => (

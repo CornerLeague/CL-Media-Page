@@ -534,7 +534,10 @@ export class ScoresAgent {
       const key = this.makeUserTeamCacheKey(firebaseUid, sport, mode);
       const cached = await client.get(key);
       
-      if (!cached) return null;
+      if (!cached) {
+        try { metrics.recordCacheEvent(`user_team_scores:${mode}`, false); } catch {}
+        return null;
+      }
 
       const parsed = JSON.parse(cached) as any[];
       const cachedGames = parsed.map((g) => ({
@@ -549,6 +552,7 @@ export class ScoresAgent {
         mode, 
         count: cachedGames.length 
       }, "cache hit for user team scores");
+      try { metrics.recordCacheEvent(`user_team_scores:${mode}`, true); } catch {}
 
       return cachedGames;
     } catch (error) {

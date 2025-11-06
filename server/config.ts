@@ -11,6 +11,8 @@ const EnvSchema = z.object({
   FIREBASE_PROJECT_ID: z.string().optional(),
   FIREBASE_CLIENT_EMAIL: z.string().optional(),
   FIREBASE_PRIVATE_KEY: z.string().optional(),
+  // Auth parity: optionally allow dev header override (default true to preserve tests)
+  ALLOW_DEV_HEADER: z.string().optional(),
   JOBS_ENABLED: z.string().optional(),
   JOB_QUEUE_PREFIX: z.string().optional(),
   // Force in-memory storage for local/dev regardless of DATABASE_URL
@@ -106,6 +108,9 @@ export const config = {
     clientEmail: env.FIREBASE_CLIENT_EMAIL,
     privateKey: env.FIREBASE_PRIVATE_KEY,
   },
+  // When false, development behaves like production (no x-dev-firebase-uid override)
+  // Default: disabled except during tests, can be explicitly enabled via env
+  allowDevHeader: ["1", "true", "yes"].includes((env.ALLOW_DEV_HEADER ?? (env.NODE_ENV === 'test' ? 'true' : 'false')).toLowerCase()),
   jobsEnabled: ["1", "true", "yes"].includes((env.JOBS_ENABLED ?? "").toLowerCase()),
   jobQueuePrefix: env.JOB_QUEUE_PREFIX ?? "jobs",
   // Background jobs intervals and maintenance
@@ -139,11 +144,9 @@ export const config = {
       parseCsvList(env.CORS_ORIGINS).length > 0
         ? parseCsvList(env.CORS_ORIGINS)
         : [
-            // sensible defaults for local development
-            'http://localhost:5000',
-            'http://127.0.0.1:5000',
-            'http://localhost:5173',
-            'http://127.0.0.1:5173',
+            // unified local development port
+            'http://localhost:5002',
+            'http://127.0.0.1:5002',
           ],
     credentials: ["1", "true", "yes"].includes((env.CORS_CREDENTIALS ?? (env.NODE_ENV === 'development' ? 'true' : 'false')).toLowerCase()),
   },

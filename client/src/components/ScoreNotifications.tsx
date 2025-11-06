@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, memo, useMemo, useCallback } from 'react';
 import { X, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { Sport } from '../data/sportsTeams';
 import { useRealTimeScoreUpdates } from '../hooks/useRealTimeScoreUpdates';
@@ -34,6 +34,7 @@ export interface ScoreNotificationsProps {
 // HELPER FUNCTIONS
 // ============================================================================
 
+// Memoize the notification creation function using useMemo instead of memo
 const createNotificationFromUpdate = (update: RealTimeUpdateEvent): ScoreNotification => {
   const baseNotification = {
     id: `${update.gameId}-${update.timestamp}-${Math.random()}`,
@@ -97,11 +98,12 @@ const createNotificationFromUpdate = (update: RealTimeUpdateEvent): ScoreNotific
 // NOTIFICATION ITEM COMPONENT
 // ============================================================================
 
+// Memoize the NotificationItem component
 const NotificationItem: React.FC<{
   notification: ScoreNotification;
   onDismiss: (id: string) => void;
   enableAutoHide: boolean;
-}> = ({ notification, onDismiss, enableAutoHide }) => {
+}> = memo(({ notification, onDismiss, enableAutoHide }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
 
@@ -208,13 +210,15 @@ const NotificationItem: React.FC<{
       </div>
     </div>
   );
-};
+});
+
+NotificationItem.displayName = 'NotificationItem';
 
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
-export const ScoreNotifications: React.FC<ScoreNotificationsProps> = ({
+export const ScoreNotifications: React.FC<ScoreNotificationsProps> = memo(({
   sports = [],
   maxNotifications = 5,
   defaultDuration = 5000,
@@ -225,11 +229,29 @@ export const ScoreNotifications: React.FC<ScoreNotificationsProps> = ({
   const [notifications, setNotifications] = useState<ScoreNotification[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  const { lastUpdate, isConnected, connectionState, connect } = useRealTimeScoreUpdates({
+  // Memoize hook options to prevent unnecessary re-renders
+  const hookOptions = useMemo(() => ({
     sports,
     enableNotifications: false, // We handle notifications ourselves
     enableSoundAlerts: false,
-  });
+  }), [sports]);
+
+  const { lastUpdate, isConnected, connectionState, connect } = useRealTimeScoreUpdates(hookOptions);
+
+  // Memoize dismiss handler
+  const handleDismiss = useCallback((id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+
+  // Memoize position classes
+  const positionClasses = useMemo(() => {
+    switch (position) {
+      case 'top-left': return 'top-4 left-4';
+      case 'bottom-right': return 'bottom-4 right-4';
+      case 'bottom-left': return 'bottom-4 left-4';
+      default: return 'top-4 right-4';
+    }
+  }, [position]);
 
   // Handle connection errors
   useEffect(() => {
@@ -240,10 +262,10 @@ export const ScoreNotifications: React.FC<ScoreNotificationsProps> = ({
     }
   }, [connectionState]);
 
-  const handleRetryConnection = () => {
+  const handleRetryConnection = useCallback(() => {
     setConnectionError(null);
     connect();
-  };
+  }, [connect]);
 
   // Add notification from real-time update
   useEffect(() => {
@@ -366,6 +388,6 @@ export const ScoreNotifications: React.FC<ScoreNotificationsProps> = ({
       )}
     </LoadingErrorBoundary>
   );
-};
+});
 
 export default ScoreNotifications;

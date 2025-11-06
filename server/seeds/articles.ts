@@ -226,14 +226,14 @@ export async function seedArticles() {
 }
 
 // Allow running directly
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   seedArticles()
     .then(() => {
       logger.info('Seed script completed successfully');
       process.exit(0);
     })
     .catch((error) => {
-      logger.error({ err: error }, 'Seed script failed');
+      logger.error('Seed script failed:', error);
       process.exit(1);
     });
 }

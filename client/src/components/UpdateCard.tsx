@@ -1,7 +1,8 @@
+import { memo, useMemo, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Newspaper, Activity, ArrowRightLeft, UserPlus } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import formatDistanceToNow from 'date-fns/formatDistanceToNow';
 
 export interface Update {
   id: string;
@@ -17,8 +18,8 @@ interface UpdateCardProps {
   onClick?: () => void;
 }
 
-export const UpdateCard = ({ update, onClick }: UpdateCardProps) => {
-  const getTypeIcon = (type: Update['type']) => {
+export const UpdateCard = memo(({ update, onClick }: UpdateCardProps) => {
+  const getTypeIcon = useCallback((type: Update['type']) => {
     switch (type) {
       case 'news':
         return <Newspaper className="w-12 h-12 text-accent/40" />;
@@ -31,9 +32,9 @@ export const UpdateCard = ({ update, onClick }: UpdateCardProps) => {
       default:
         return <Newspaper className="w-12 h-12 text-accent/40" />;
     }
-  };
+  }, []);
 
-  const getTypeLabel = (type: Update['type']) => {
+  const getTypeLabel = useCallback((type: Update['type']) => {
     switch (type) {
       case 'news':
         return 'News';
@@ -46,9 +47,9 @@ export const UpdateCard = ({ update, onClick }: UpdateCardProps) => {
       default:
         return type;
     }
-  };
+  }, []);
 
-  const getTypeBadgeColor = (type: Update['type']) => {
+  const getTypeBadgeColor = useCallback((type: Update['type']) => {
     switch (type) {
       case 'news':
         return 'text-blue-600 bg-blue-50 dark:bg-blue-950 dark:text-blue-400';
@@ -61,15 +62,21 @@ export const UpdateCard = ({ update, onClick }: UpdateCardProps) => {
       default:
         return 'text-gray-600 bg-gray-50 dark:bg-gray-950 dark:text-gray-400';
     }
-  };
+  }, []);
 
-  const formatTimestamp = (timestamp: string) => {
+  const formatTimestamp = useCallback((timestamp: string) => {
     try {
       return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
     } catch {
       return timestamp;
     }
-  };
+  }, []);
+
+  // Memoize computed values
+  const typeIcon = useMemo(() => getTypeIcon(update.type), [update.type, getTypeIcon]);
+  const typeLabel = useMemo(() => getTypeLabel(update.type), [update.type, getTypeLabel]);
+  const badgeColor = useMemo(() => getTypeBadgeColor(update.type), [update.type, getTypeBadgeColor]);
+  const formattedTime = useMemo(() => formatTimestamp(update.timestamp), [update.timestamp, formatTimestamp]);
 
   return (
     <Card
@@ -79,16 +86,16 @@ export const UpdateCard = ({ update, onClick }: UpdateCardProps) => {
     >
       <div className="relative h-28 sm:h-32 overflow-hidden bg-gradient-to-br from-accent/20 to-accent/5">
         <div className="absolute inset-0 flex items-center justify-center">
-          {getTypeIcon(update.type)}
+          {typeIcon}
         </div>
 
         <div className="absolute top-3 right-3">
           <Badge
             variant="outline"
-            className={`text-xs ${getTypeBadgeColor(update.type)}`}
+            className={`text-xs ${badgeColor}`}
             data-testid="badge-update-type"
           >
-            {getTypeLabel(update.type)}
+            {typeLabel}
           </Badge>
         </div>
       </div>
@@ -108,7 +115,7 @@ export const UpdateCard = ({ update, onClick }: UpdateCardProps) => {
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span className="font-body truncate flex-1" data-testid="text-update-time">
-            {formatTimestamp(update.timestamp)}
+            {formattedTime}
           </span>
           {update.source && (
             <span className="font-body text-xs truncate max-w-[80px] sm:max-w-[120px] ml-2">
@@ -119,4 +126,6 @@ export const UpdateCard = ({ update, onClick }: UpdateCardProps) => {
       </div>
     </Card>
   );
-};
+});
+
+UpdateCard.displayName = 'UpdateCard';

@@ -1,5 +1,5 @@
 import { Switch, Route, Redirect, useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -7,39 +7,32 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SportProvider } from "@/contexts/SportContext";
+import { WebSocketProvider } from "@/contexts/WebSocketContext";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TopNavBar } from "@/components/TopNavBar";
-import { AISummarySection } from "@/components/AISummarySection";
-import { RecentUpdatesSection } from "@/components/RecentUpdatesSection";
-import { FanExperiencesSection } from "@/components/FanExperiencesSection";
 import { ScoreNotifications } from "@/components/ScoreNotifications";
-import RealTimeDemo from "@/pages/RealTimeDemo";
-import Login from "@/pages/login";
-import Onboarding from "@/pages/onboarding";
-import Settings from "@/pages/settings";
-import NotFound from "@/pages/not-found";
+import { SportChangeNotificationWrapper } from "@/components/SportChangeNotificationWrapper";
 import type { UserProfile } from "@shared/schema";
+
+// Lazy load components for better performance
+const AISummarySection = lazy(() => import("@/components/AISummarySection").then(module => ({ default: module.AISummarySection })));
+const RecentUpdatesSection = lazy(() => import("@/components/RecentUpdatesSection").then(module => ({ default: module.RecentUpdatesSection })));
+const FanExperiencesSection = lazy(() => import("@/components/FanExperiencesSection").then(module => ({ default: module.FanExperiencesSection })));
+const RealTimeDemo = lazy(() => import("@/pages/RealTimeDemo"));
+const Login = lazy(() => import("@/pages/login"));
+const Onboarding = lazy(() => import("@/pages/onboarding"));
+const Settings = lazy(() => import("@/pages/settings"));
+const NotFound = lazy(() => import("@/pages/not-found"));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading } = useAuth();
   const [location] = useLocation();
 
   // Fetch user profile to determine onboarding completion
-  const { data: profile, isLoading: profileLoading } = useQuery<UserProfile | null>({
+  const { data: profile, isLoading: profileLoading, error: profileError } = useQuery<UserProfile | null>({
     queryKey: ["/api/profile", String(user?.id ?? "")],
     enabled: !!user,
-    queryFn: async ({ queryKey }) => {
-      const url = queryKey.join("/") as string;
-      const res = await fetch(url, { credentials: "include" });
-      if (res.status === 404) {
-        // No profile yet
-        return null;
-      }
-      if (!res.ok) {
-        const text = (await res.text()) || res.statusText;
-        throw new Error(`${res.status}: ${text}`);
-      }
-      return await res.json();
-    },
+    // Use default query client function which includes auth headers
   });
 
   // Unauthenticated handling:
@@ -69,7 +62,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const needsOnboarding = !profile || profile.onboardingCompleted === false;
+  // Treat 404 as "no profile yet"; other errors are considered recoverable later
+  const isProfileMissing = !profile || (profileError && String((profileError as any)?.message || "").startsWith("404:"));
+  const needsOnboarding = isProfileMissing || profile?.onboardingCompleted === false;
 
   // Centralized routing policy:
   // - If user needs onboarding, force them onto /onboarding from any route
@@ -198,13 +193,19 @@ function HomePage() {
       
       <main className="relative">
         {/* AI Summary Section - Hero area with featured team */}
-        <AISummarySection teamDashboard={mockTeamDashboard} />
+        <Suspense fallback={<div className="h-96 bg-muted/20 animate-pulse rounded-lg" />}>
+          <AISummarySection teamDashboard={mockTeamDashboard} />
+        </Suspense>
 
         {/* Recent Updates Section */}
-        <RecentUpdatesSection updates={mockUpdates} />
+        <Suspense fallback={<div className="h-64 bg-muted/20 animate-pulse rounded-lg mx-6 my-8" />}>
+          <RecentUpdatesSection updates={mockUpdates} />
+        </Suspense>
 
         {/* Fan Experiences Section */}
-        <FanExperiencesSection experiences={mockExperiences} />
+        <Suspense fallback={<div className="h-64 bg-muted/20 animate-pulse rounded-lg mx-6 my-8" />}>
+          <FanExperiencesSection experiences={mockExperiences} />
+        </Suspense>
       </main>
     </div>
   );
@@ -230,20 +231,35 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
         <TooltipProvider>
-          <AuthProvider>
-            <SportProvider>
+          <ErrorBoundary>
+            <AuthProvider>
+              <SportProvider>
+                <WebSocketProvider
+                  autoConnect={false}
+                  autoReconnect={true}
+                  maxReconnectAttempts={5}
+                  heartbeatInterval={30000}
+                >
               <Switch>
-                <Route path="/login" component={Login} />
+                <Route path="/login">
+                  <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>}>
+                    <Login />
+                  </Suspense>
+                </Route>
                 <Route path="/onboarding">
                   <ProtectedRoute>
-                    <Onboarding />
+                    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>}>
+                      <Onboarding />
+                    </Suspense>
                   </ProtectedRoute>
                 </Route>
                 <Route path="/settings">
                   <ProtectedRoute>
                     <>
                       <TopNavBar />
-                      <Settings />
+                      <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>}>
+                        <Settings />
+                      </Suspense>
                     </>
                   </ProtectedRoute>
                 </Route>
@@ -251,7 +267,9 @@ function App() {
                   <ProtectedRoute>
                     <>
                       <TopNavBar />
-                      <RealTimeDemo />
+                      <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>}>
+                        <RealTimeDemo />
+                      </Suspense>
                     </>
                   </ProtectedRoute>
                 </Route>
@@ -260,7 +278,11 @@ function App() {
                     <HomePage />
                   </ProtectedRoute>
                 </Route>
-                <Route component={NotFound} />
+                <Route>
+                  <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>}>
+                    <NotFound />
+                  </Suspense>
+                </Route>
               </Switch>
               <Toaster />
               <ScoreNotifications 
@@ -268,6 +290,7 @@ function App() {
                 maxNotifications={3}
                 position="top-right"
               />
+              <SportChangeNotificationWrapper />
               {isDevHmr && (
                 <div
                   className="fixed bottom-2 right-2 z-50 px-2 py-1 rounded bg-emerald-600 text-white text-xs shadow"
@@ -276,8 +299,10 @@ function App() {
                   HMR Active
                 </div>
               )}
-            </SportProvider>
-          </AuthProvider>
+            </WebSocketProvider>
+          </SportProvider>
+        </AuthProvider>
+        </ErrorBoundary>
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

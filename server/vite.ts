@@ -34,6 +34,30 @@ export async function setupVite(app: Express, server: Server) {
     appType: "custom",
   });
 
+  // In development, relax CSP just enough to allow tooling that may
+  // use eval/new Function in dev-only paths. Do NOT enable this in production.
+  app.use((req, res, next) => {
+    // Only set CSP for HTML/JS responses served by the dev server
+    // Keep policy permissive for dev but scoped to local tooling.
+    res.setHeader(
+      "Content-Security-Policy",
+      [
+        "default-src 'self'",
+        // Allow dev tooling that relies on eval in development only
+        "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: data:",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob: https:",
+        // Vite HMR/ws and API calls in dev
+        "connect-src 'self' ws: http: https:",
+        "font-src 'self' data:",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "frame-ancestors 'self'",
+      ].join("; ")
+    );
+    next();
+  });
+
   // Respond to Vite client connectivity pings immediately to avoid aborted fetches
   app.use((req, res, next) => {
     const accept = String(req.headers["accept"] ?? "");
@@ -73,11 +97,8 @@ export async function setupVite(app: Express, server: Server) {
       );
 
       // Serve index.html as-is without dynamic query versioning to avoid HMR full reload loops
-      // let template = await fs.promises.readFile(clientTemplate, "utf-8");
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
       let page = await vite.transformIndexHtml(url, template);
-      // Strip Vite HMR client script to fully disable reload cycles
-      page = page.replace(/<script[^>]*src="\/@vite\/client"[^>]*><\/script>/i, "");
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);

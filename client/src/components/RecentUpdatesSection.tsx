@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, memo, useMemo, useCallback } from 'react';
 import { Update, UpdateCard } from './UpdateCard';
 import { Skeleton } from '@/components/ui/skeleton';
+import LoadingIndicator from '@/components/LoadingIndicator';
+import { ErrorCard } from '@/components/ui/error-states';
 import { Newspaper } from 'lucide-react';
 import {
   Select,
@@ -19,27 +21,29 @@ interface RecentUpdatesSectionProps {
   onCategoryChange?: (category: UpdateCategory) => void;
 }
 
-export const RecentUpdatesSection = ({ updates, isLoading, error, onCategoryChange }: RecentUpdatesSectionProps) => {
+export const RecentUpdatesSection = memo(({ updates, isLoading, error, onCategoryChange }: RecentUpdatesSectionProps) => {
   const [selectedCategory, setSelectedCategory] = useState<UpdateCategory>('Latest News');
 
-  const handleCategoryChange = (value: UpdateCategory) => {
+  const handleCategoryChange = useCallback((value: UpdateCategory) => {
     setSelectedCategory(value);
     onCategoryChange?.(value);
     console.log('Category changed to:', value);
-  };
+  }, [onCategoryChange]);
 
-  const handleUpdateClick = (update: Update) => {
+  const handleUpdateClick = useCallback((update: Update) => {
     console.log('Update clicked:', update);
-  };
+  }, []);
 
   if (error) {
     return (
       <section className="w-full mt-6 sm:mt-8" data-testid="section-recent-updates">
         <div className="px-4 sm:px-6 md:px-8 lg:px-12">
-          <div className="text-red-600 bg-red-50 dark:bg-red-950 dark:text-red-400 p-4 rounded-lg border">
-            <p className="text-sm">Unable to load recent updates</p>
-            <p className="text-xs text-muted-foreground mt-1">{error.message}</p>
-          </div>
+          <ErrorCard
+            title="Unable to load recent updates"
+            message={error.message}
+            variant="destructive"
+            className="bg-card/50"
+          />
         </div>
       </section>
     );
@@ -71,7 +75,16 @@ export const RecentUpdatesSection = ({ updates, isLoading, error, onCategoryChan
       </div>
 
       {isLoading && (
-        <div className="overflow-x-auto scrollbar-hide">
+        <div className="overflow-x-auto scrollbar-hide relative">
+          {/* Inline loading indicator for context */}
+          <div className="px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 pb-2">
+            <LoadingIndicator
+              variant="linear"
+              message="Loading updates..."
+              operation="updates-refresh"
+              className="bg-card/50 rounded-md"
+            />
+          </div>
           <div className="flex gap-2 sm:gap-3 md:gap-4 px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 pb-3 sm:pb-4">
             {Array.from({ length: 3 }).map((_, index) => (
               <div key={index} className="w-64 sm:w-72 md:w-80 flex-shrink-0">
@@ -106,4 +119,6 @@ export const RecentUpdatesSection = ({ updates, isLoading, error, onCategoryChan
       )}
     </section>
   );
-};
+});
+
+RecentUpdatesSection.displayName = 'RecentUpdatesSection';

@@ -44,8 +44,18 @@ export async function authenticateFirebase(req: Request, res: Response, next: Ne
   const requestId = (req as any).id || undefined;
 
   try {
-    // Dev fallback: Allow header override when running in dev and Firebase env missing
-    if (config.isDev && !hasFirebaseEnv()) {
+    // Dev convenience: allow header override only when explicitly enabled
+    if (config.isDev && config.allowDevHeader) {
+      const devUidHeader = String(req.headers['x-dev-firebase-uid'] || '').trim();
+      if (devUidHeader) {
+        req.user = { uid: devUidHeader };
+        log.info({ requestId, uid: devUidHeader }, 'authenticated via dev header override');
+        return next();
+      }
+    }
+
+    // Dev fallback: allow header override when Firebase env is missing and override enabled
+    if (config.isDev && config.allowDevHeader && !hasFirebaseEnv()) {
       const devUid = String(req.headers['x-dev-firebase-uid'] || '').trim();
       if (!devUid) {
         log.warn({ requestId, reason: 'missing_dev_uid' }, 'unauthorized (dev fallback requires x-dev-firebase-uid)');

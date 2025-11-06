@@ -38,6 +38,11 @@ export const sampleUsers: User[] = [
     id: 'user-003',
     username: 'multi_sport_fan',
     password: 'hashed_password_789'
+  },
+  {
+    id: 'user-004',
+    username: 'hockey_buff',
+    password: 'hashed_password_321'
   }
 ];
 
@@ -65,6 +70,14 @@ export const sampleUserProfiles: UserProfile[] = [
     favoriteSports: ['NBA', 'NFL', 'MLB'],
     favoriteTeams: ['NBA_CHI', 'NFL_GB', 'MLB_NYY'],
     onboardingCompleted: false
+  },
+  {
+    firebaseUid: 'firebase-uid-004',
+    firstName: 'Hannah',
+    lastName: 'Lee',
+    favoriteSports: ['NHL'],
+    favoriteTeams: ['NHL_BOS', 'NHL_NYR'],
+    onboardingCompleted: true
   }
 ];
 
@@ -137,6 +150,26 @@ export const sampleTeams: Team[] = [
     league: 'MLB',
     code: 'LAD',
     name: 'Los Angeles Dodgers'
+  },
+
+  // NHL Teams
+  {
+    id: 'NHL_BOS',
+    league: 'NHL',
+    code: 'BOS',
+    name: 'Boston Bruins'
+  },
+  {
+    id: 'NHL_NYR',
+    league: 'NHL',
+    code: 'NYR',
+    name: 'New York Rangers'
+  },
+  {
+    id: 'NHL_TOR',
+    league: 'NHL',
+    code: 'TOR',
+    name: 'Toronto Maple Leafs'
   }
 ];
 
@@ -213,6 +246,48 @@ export const sampleGames: Game[] = [
     timeRemaining: null,
     startTime: new Date('2024-01-15T19:00:00Z'),
     cachedAt: new Date('2024-01-15T22:15:00Z')
+  },
+
+  // Bruins vs Rangers - NHL Final
+  {
+    id: 'game-006',
+    homeTeamId: 'NHL_BOS',
+    awayTeamId: 'NHL_NYR',
+    homePts: 3,
+    awayPts: 2,
+    status: 'final',
+    period: '3',
+    timeRemaining: null,
+    startTime: new Date('2024-01-12T23:00:00Z'),
+    cachedAt: new Date('2024-01-13T01:30:00Z')
+  },
+
+  // Rangers vs Maple Leafs - NHL Live
+  {
+    id: 'game-007',
+    homeTeamId: 'NHL_NYR',
+    awayTeamId: 'NHL_TOR',
+    homePts: 2,
+    awayPts: 1,
+    status: 'in_progress',
+    period: '2',
+    timeRemaining: '12:10',
+    startTime: new Date('2024-01-18T00:00:00Z'),
+    cachedAt: new Date('2024-01-18T00:45:00Z')
+  },
+
+  // Bruins vs Maple Leafs - NHL Scheduled
+  {
+    id: 'game-008',
+    homeTeamId: 'NHL_BOS',
+    awayTeamId: 'NHL_TOR',
+    homePts: 0,
+    awayPts: 0,
+    status: 'scheduled',
+    period: null,
+    timeRemaining: null,
+    startTime: new Date('2024-01-20T00:30:00Z'),
+    cachedAt: new Date('2024-01-18T12:00:00Z')
   }
 ];
 
@@ -243,6 +318,18 @@ export const sampleGameScores: GameScore[] = [
     period: '3',
     timeRemaining: '7:23',
     startTime: new Date('2024-01-16T22:00:00Z'),
+    source: 'live'
+  },
+  {
+    gameId: 'game-007',
+    homeTeamId: 'NHL_NYR',
+    awayTeamId: 'NHL_TOR',
+    homePts: 2,
+    awayPts: 1,
+    status: 'in_progress',
+    period: '2',
+    timeRemaining: '12:10',
+    startTime: new Date('2024-01-18T00:00:00Z'),
     source: 'live'
   }
 ];
@@ -286,6 +373,16 @@ export const sampleUserTeams: UserTeam[] = [
     id: 'ut-007',
     userId: 'user-003',
     teamId: 'MLB_NYY'
+  },
+  {
+    id: 'ut-008',
+    userId: 'user-004',
+    teamId: 'NHL_BOS'
+  },
+  {
+    id: 'ut-009',
+    userId: 'user-004',
+    teamId: 'NHL_NYR'
   }
 ];
 
@@ -321,6 +418,14 @@ export const sampleUserFavoriteTeams: UserFavoriteTeam[] = [
   {
     teamId: 'MLB_NYY',
     sport: 'MLB'
+  },
+  {
+    teamId: 'NHL_BOS',
+    sport: 'NHL'
+  },
+  {
+    teamId: 'NHL_NYR',
+    sport: 'NHL'
   }
 ];
 
@@ -345,6 +450,12 @@ export const sampleUserTeamScoresOptions: UserTeamScoresOptions[] = [
     firebaseUid: 'firebase-uid-003',
     sport: 'NFL',
     limit: 20,
+    mode: 'live'
+  },
+  {
+    firebaseUid: 'firebase-uid-004',
+    sport: 'NHL',
+    limit: 10,
     mode: 'live'
   }
 ];
@@ -372,6 +483,13 @@ export const sampleUserTeamScoresResults: UserTeamScoresResult[] = [
     games: [], // No games found
     userProfile: sampleUserProfiles[2],
     favoriteTeams: [sampleUserFavoriteTeams[4], sampleUserFavoriteTeams[5], sampleUserFavoriteTeams[6]],
+    cacheHit: false,
+    source: 'live'
+  },
+  {
+    games: [sampleGames[5], sampleGames[6]], // NHL recent games
+    userProfile: sampleUserProfiles[3],
+    favoriteTeams: [sampleUserFavoriteTeams[7], sampleUserFavoriteTeams[8]],
     cacheHit: false,
     source: 'live'
   }
@@ -412,6 +530,15 @@ export const testScenarios = {
     favoriteTeams: [sampleUserFavoriteTeams[4], sampleUserFavoriteTeams[5], sampleUserFavoriteTeams[6]]
   },
   
+  // NHL-only user with live game
+  nhlOnlyUserLive: {
+    user: sampleUsers[3],
+    profile: sampleUserProfiles[3],
+    teams: [sampleTeams[10], sampleTeams[11]], // Bruins, Rangers
+    games: [sampleGames[6]], // Rangers vs Maple Leafs (live)
+    favoriteTeams: [sampleUserFavoriteTeams[7], sampleUserFavoriteTeams[8]]
+  },
+
   // User with incomplete onboarding
   incompleteOnboardingUser: {
     user: sampleUsers[2],

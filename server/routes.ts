@@ -21,6 +21,8 @@ import { validateTeamAccess } from "./middleware/teamAccessGuard";
 import { validateScoresQuery, validateScheduleQuery, validateBoxScoreParams, validateUserTeamScoresQuery } from "./middleware/validateRequest";
 import { config } from "./config";
 import { metrics } from "./metrics";
+import { ScoresAgent } from "./agents/scoresAgent";
+import { SportAdapterFactory } from "./agents/adapters";
 import { 
   UserTeamScoresError,
   NoFavoriteTeamError,
@@ -140,6 +142,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     standardHeaders: true, 
     legacyHeaders: false,
     handler: (req, res) => {
+      // Record rate-limit metric when a request is blocked
+      try { metrics.recordRateLimitHit(req.path, 'ip'); } catch { /* no-op */ }
       const error = new RateLimitError('API rate limit exceeded', {
         limit: 60,
         windowMs: 60000,
@@ -149,6 +153,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clientIP: req.ip,
         userAgent: req.get('User-Agent'),
         endpoint: req.path
+      });
+    }
+  });
+
+  // Per-user limiter for user team scores endpoint
+  const userScoresLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+      const uid = (req.user as any)?.uid || (req as any).userContext?.firebaseUid;
+      return uid || req.ip;
+    },
+    handler: (req, res) => {
+      // Record rate-limit metric when a request is blocked
+      try { metrics.recordRateLimitHit(req.path, 'user'); } catch { /* no-op */ }
+      const uid = (req.user as any)?.uid || (req as any).userContext?.firebaseUid;
+      const error = new RateLimitError('User rate limit exceeded', {
+        limit: 60,
+        windowMs: 60000,
+        clientIP: req.ip,
+        userId: uid
+      });
+      return handleApiError(error, res, 'user-scores-rate-limit', {
+        clientIP: req.ip,
+        userAgent: req.get('User-Agent'),
+        endpoint: req.path,
+        userId: uid
       });
     }
   });
@@ -285,6 +318,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch {}
 
     return res.status(200).json(body);
+  });
+
+  // WebSocket stats endpoint for debugging and monitoring
+  app.get("/api/ws/stats", async (_req, res) => {
+    try {
+      const { getWsStats } = await import("./ws");
+      const stats = getWsStats();
+      return res.json(stats);
+    } catch (error) {
+      return handleApiError(
+        error as Error,
+        res,
+        'get-ws-stats',
+        { endpoint: '/api/ws/stats' }
+      );
+    }
   });
 
   // Error monitoring endpoints
@@ -465,17 +514,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // Auth: current user
-  app.get("/api/auth/me", (req, res) => {
-    const user: any = (req as any).user;
-    if (!user) return res.status(401).json({ error: "Not authenticated" });
-    return res.json({ id: user.id, username: user.username });
+  // Auth: current user (Firebase-based)
+  app.get("/api/auth/me", authenticateFirebase, (req, res) => {
+    const user = (req.user as any);
+    if (!user?.uid) {
+      return res.status(401).json({ error: "Unauthorized", code: "unauthorized" });
+    }
+    return res.json({ uid: user.uid, email: user.email ?? null });
   });
 
-  // Get user profile by Firebase UID
-  app.get("/api/profile/:firebaseUid", async (req, res) => {
+  // Get user profile by Firebase UID (protected: must match authenticated user)
+  app.get("/api/profile/:firebaseUid", authenticateFirebase, async (req, res) => {
     try {
       const { firebaseUid } = req.params;
+      const authUid = (req.user as any)?.uid;
+      if (!authUid || String(authUid) !== String(firebaseUid)) {
+        return res.status(403).json({ error: "Forbidden: UID mismatch" });
+      }
       const profile = await storage.getUserProfile(firebaseUid);
       
       if (!profile) {
@@ -490,7 +545,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create or update user profile
-  app.post("/api/profile", async (req, res) => {
+  app.post("/api/profile", authenticateFirebase, async (req, res) => {
     try {
       const validationResult = insertUserProfileSchema.safeParse(req.body);
       
@@ -502,6 +557,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const data = validationResult.data;
+      const authUid = (req.user as any)?.uid;
+      if (!authUid || String(authUid) !== String(data.firebaseUid)) {
+        return res.status(403).json({ error: "Forbidden: UID mismatch" });
+      }
       const existingProfile = await storage.getUserProfile(data.firebaseUid);
       
       let profile;
@@ -519,9 +578,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Mark onboarding as complete
-  app.put("/api/profile/:firebaseUid/onboarding", async (req, res) => {
+  app.put("/api/profile/:firebaseUid/onboarding", authenticateFirebase, async (req, res) => {
     try {
       const { firebaseUid } = req.params;
+      const authUid = (req.user as any)?.uid;
+      if (!authUid || String(authUid) !== String(firebaseUid)) {
+        return res.status(403).json({ error: "Forbidden: UID mismatch" });
+      }
       const profile = await storage.updateUserProfile(firebaseUid, {
         onboardingCompleted: true
       });
@@ -538,10 +601,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update user profile name
-  app.patch("/api/profile/:firebaseUid/name", async (req, res) => {
+  app.patch("/api/profile/:firebaseUid/name", authenticateFirebase, async (req, res) => {
     try {
       const { firebaseUid } = req.params;
       const { firstName, lastName } = req.body;
+      const authUid = (req.user as any)?.uid;
+      if (!authUid || String(authUid) !== String(firebaseUid)) {
+        return res.status(403).json({ error: "Forbidden: UID mismatch" });
+      }
       
       if (!firstName || !lastName) {
         return res.status(400).json({ error: "First name and last name are required" });
@@ -564,10 +631,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update favorite sports
-  app.patch("/api/profile/:firebaseUid/sports", async (req, res) => {
+  app.patch("/api/profile/:firebaseUid/sports", authenticateFirebase, async (req, res) => {
     try {
       const { firebaseUid } = req.params;
       const { favoriteSports } = req.body;
+      const authUid = (req.user as any)?.uid;
+      if (!authUid || String(authUid) !== String(firebaseUid)) {
+        return res.status(403).json({ error: "Forbidden: UID mismatch" });
+      }
       
       if (!Array.isArray(favoriteSports)) {
         return res.status(400).json({ error: "favoriteSports must be an array" });
@@ -589,10 +660,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update favorite teams
-  app.patch("/api/profile/:firebaseUid/teams", async (req, res) => {
+  app.patch("/api/profile/:firebaseUid/teams", authenticateFirebase, async (req, res) => {
     try {
       const { firebaseUid } = req.params;
       const { favoriteTeams } = req.body;
+      const authUid = (req.user as any)?.uid;
+      if (!authUid || String(authUid) !== String(firebaseUid)) {
+        return res.status(403).json({ error: "Forbidden: UID mismatch" });
+      }
       
       if (!Array.isArray(favoriteTeams)) {
         return res.status(400).json({ error: "favoriteTeams must be an array" });
@@ -799,13 +874,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/summary/:teamId/generate", generateLimiter, async (req, res) => {
+  app.post(
+    "/api/summary/:teamId/generate",
+    generateLimiter,
+    authenticateFirebase,
+    loadUserContext,
+    async (req, res) => {
     try {
       const { teamId } = req.params;
       const { model, force } = req.body ?? {};
       
       if (!teamId) {
         throw new ValidationError('Team ID is required', { teamId });
+      }
+
+      // Enforce that the authenticated user owns/accesses this team
+      const userTeams = Array.isArray(req.userContext?.teamIds) ? req.userContext!.teamIds : [];
+      if (!userTeams.includes(String(teamId))) {
+        return res.status(403).json({ error: 'Access denied', teamId });
       }
       
       // Stub generation: create a placeholder summary entry
@@ -829,10 +915,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       );
     }
-  });
+  }
+  );
 
   // --- Phase 3: Experiences & RSVPs ---
-  app.get("/api/experiences", async (req, res) => {
+  app.get("/api/experiences", authenticateFirebase, async (req, res) => {
     try {
       const { teamIds } = req.query as Record<string, string | string[]>;
       const teamIdsArr = Array.isArray(teamIds) ? teamIds : teamIds ? [String(teamIds)] : [];
@@ -853,7 +940,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/experiences", async (req, res) => {
+  app.post("/api/experiences", authenticateFirebase, async (req, res) => {
     try {
       const body = req.body ?? {};
       // Convert ISO string dates to Date objects
@@ -872,7 +959,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/experiences/:id", async (req, res) => {
+  app.patch("/api/experiences/:id", authenticateFirebase, async (req, res) => {
     try {
       const { id } = req.params;
       const updated = await storage.updateExperience(id, req.body ?? {});
@@ -884,7 +971,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/experiences/:id", async (req, res) => {
+  app.delete("/api/experiences/:id", authenticateFirebase, async (req, res) => {
     try {
       const { id } = req.params;
       await storage.deleteExperience(id);
@@ -895,14 +982,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/experiences/:id/rsvp", async (req, res) => {
+  app.post("/api/experiences/:id/rsvp", authenticateFirebase, async (req, res) => {
     try {
       const { id } = req.params;
       const parsed = insertRsvpSchema.safeParse({ ...req.body, experienceId: id });
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid payload", details: parsed.error.issues });
       }
+      const authUid = (req.user as any)?.uid;
       const { userId } = parsed.data;
+      if (!authUid || String(authUid) !== String(userId)) {
+        return res.status(403).json({ error: "Forbidden: UID mismatch" });
+      }
       const exists = await storage.hasRsvp(id, userId);
       if (exists) return res.status(409).json({ error: "Duplicate RSVP" });
       const created = await storage.createRsvp(parsed.data);
@@ -913,14 +1004,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/experiences/:id/rsvp", async (req, res) => {
+  app.delete("/api/experiences/:id/rsvp", authenticateFirebase, async (req, res) => {
     try {
       const { id } = req.params;
       const parsed = z.object({ userId: z.string() }).safeParse(req.body ?? {});
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid payload", details: parsed.error.issues });
       }
+      const authUid = (req.user as any)?.uid;
       const { userId } = parsed.data;
+      if (!authUid || String(authUid) !== String(userId)) {
+        return res.status(403).json({ error: "Forbidden: UID mismatch" });
+      }
       await storage.deleteRsvp(id, userId);
       return res.json({ ok: true });
     } catch (error) {
@@ -1004,10 +1099,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get(
     "/api/user-team-scores",
     apiGetLimiter,
+    userScoresLimiter,
     authenticateFirebase,
     validateUserTeamScoresQuery,
     loadUserContext,
     async (req, res) => {
+      const t0 = performance.now();
       try {
         const logger = withSource('user-team-scores');
         const requestId = res.locals?.requestId || Math.random().toString(36).substring(7);
@@ -1137,7 +1234,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           gameCount: limitedGames.length,
           requestId
         }, 'Successfully fetched user team scores');
-
+        const durationMs = performance.now() - t0;
+        try { metrics.observeApiRequest('/api/user-team-scores', 'GET', 200, durationMs); } catch {}
         return res.json({
           games: limitedGames,
           userTeamIds: filteredTeamIds,
@@ -1150,6 +1248,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           requestId
         });
       } catch (error) {
+        const durationMs = performance.now() - t0;
+        let status = 500;
+        if (error instanceof ValidationError) status = 400;
+        else if (error instanceof AuthenticationError) status = 401;
+        else if (error instanceof RateLimitError) status = 429;
+        else if (error instanceof ServiceUnavailableError) status = 503;
+        try { metrics.observeApiRequest('/api/user-team-scores', 'GET', status, durationMs); } catch {}
         return handleApiError(
            error as Error,
            res,
@@ -1173,6 +1278,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     loadUserContext,
     validateTeamAccess,
     async (req, res) => {
+    const t0 = performance.now();
     try {
       const gameId = req.validated?.params?.gameId ?? req.params.gameId;
       
@@ -1201,8 +1307,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       }
+      {
+        const durationMs = performance.now() - t0;
+        try { metrics.observeApiRequest('/api/scores/:gameId', 'GET', 200, durationMs); } catch {}
+      }
       return res.json(game);
     } catch (error) {
+      {
+        const durationMs = performance.now() - t0;
+        let status = 500;
+        if (error instanceof ValidationError) status = 400;
+        else if (error instanceof AuthenticationError) status = 401;
+        else if (error instanceof RateLimitError) status = 429;
+        else if (error instanceof ServiceUnavailableError) status = 503;
+        try { metrics.observeApiRequest('/api/scores/:gameId', 'GET', status, durationMs); } catch {}
+      }
       return handleApiError(
         error as Error,
         res,
@@ -1218,6 +1337,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  // Manual refresh endpoint for scores
+  app.post(
+    "/api/scores/refresh",
+    userScoresLimiter,
+    authenticateFirebase,
+    validateUserTeamScoresQuery,
+    loadUserContext,
+    validateTeamAccess,
+    async (req, res) => {
+      const t0 = performance.now();
+      try {
+        const sport = req.access?.sport ?? req.validated?.query?.sport ?? undefined;
+        const limit = Math.min(50, Number(req.validated?.query?.limit ?? 10));
+        const teamIdsArr = Array.isArray(req.access?.authorizedTeamIds)
+          ? req.access!.authorizedTeamIds
+          : [];
+
+        // Select adapter based on sport (fallback handled internally)
+        const adapter = SportAdapterFactory.getAdapter(sport ?? "NBA");
+        const agent = new ScoresAgent(adapter);
+        const mode: "live" | "featured" = teamIdsArr.length > 0 ? "live" : "featured";
+
+        const result = await agent.runOnce({ teamIds: teamIdsArr, limit, sport, mode });
+
+        // Map to client ScoreData shape
+        const scores = result.items.map((g) => ({
+          gameId: g.id,
+          homeTeam: g.homeTeamId,
+          awayTeam: g.awayTeamId,
+          homeScore: typeof g.homePts === "number" ? g.homePts : 0,
+          awayScore: typeof g.awayPts === "number" ? g.awayPts : 0,
+          status: g.status,
+          quarter: g.period ? String(g.period) : undefined,
+          timeRemaining: g.timeRemaining ?? undefined,
+          lastUpdated: new Date().toISOString(),
+        }));
+
+        {
+          const durationMs = performance.now() - t0;
+          try { metrics.observeApiRequest('/api/scores/refresh', 'POST', 200, durationMs); } catch {}
+        }
+        return res.json(scores);
+      } catch (error) {
+        const durationMs = performance.now() - t0;
+        let status = 500;
+        if (error instanceof ValidationError) status = 400;
+        else if (error instanceof AuthenticationError) status = 401;
+        else if (error instanceof RateLimitError) status = 429;
+        else if (error instanceof ServiceUnavailableError) status = 503;
+        try { metrics.observeApiRequest('/api/scores/refresh', 'POST', status, durationMs); } catch {}
+        return handleApiError(
+          error as Error,
+          res,
+          'refresh-scores',
+          {
+            userId: (req.user as any)?.uid,
+            sport: req.validated?.query?.sport ?? req.access?.sport,
+            teamCount: Array.isArray(req.access?.authorizedTeamIds) ? req.access!.authorizedTeamIds!.length : 0,
+            userAgent: req.get('User-Agent'),
+            clientIP: req.ip,
+          }
+        );
+      }
+    }
+  );
+
   app.get(
     "/api/schedule",
     apiGetLimiter,
@@ -1226,6 +1411,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     loadUserContext,
     validateTeamAccess,
     async (req, res) => {
+    const t0 = performance.now();
     try {
       const { page = "1", pageSize = "10" } = req.query as Record<string, string | string[]>;
       const p = Math.max(1, parseInt(String(page)) || 1);
@@ -1270,8 +1456,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const total = games.length;
       const start = (p - 1) * ps;
       const paged = games.slice(start, start + ps);
+      {
+        const durationMs = performance.now() - t0;
+        try { metrics.observeApiRequest('/api/schedule', 'GET', 200, durationMs); } catch {}
+      }
       return res.json({ items: paged, page: p, pageSize: ps, total });
     } catch (error) {
+      {
+        const durationMs = performance.now() - t0;
+        let status = 500;
+        if (error instanceof ValidationError) status = 400;
+        else if (error instanceof AuthenticationError) status = 401;
+        else if (error instanceof RateLimitError) status = 429;
+        else if (error instanceof ServiceUnavailableError) status = 503;
+        try { metrics.observeApiRequest('/api/schedule', 'GET', status, durationMs); } catch {}
+      }
       return handleApiError(
         error as Error,
         res,

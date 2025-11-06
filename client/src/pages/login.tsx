@@ -8,6 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
+import { getFirebaseAuth } from '@/lib/firebaseClient';
+import { isDevHeaderAllowed, getDevUid } from '@/lib/devAuth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -65,7 +68,23 @@ export default function Login() {
     e.preventDefault();
     setIsSigningIn(true);
     try {
-      await apiRequest('POST', '/api/auth/login', { username, password });
+      const auth = getFirebaseAuth();
+      if (!auth) {
+        // Dev override path: allow sign-in without Firebase
+        if (isDevHeaderAllowed()) {
+          const devUid = getDevUid() || username || 'dev-user';
+          try {
+            if (typeof window !== 'undefined') {
+              window.localStorage?.setItem?.('devUid', String(devUid));
+            }
+          } catch {}
+        } else {
+          throw new Error('Firebase is not configured. Please set client env vars.');
+        }
+      }
+      if (auth) {
+        await signInWithEmailAndPassword(auth, username, password);
+      }
       await refresh();
       toast({
         title: 'Welcome back!',
@@ -76,7 +95,7 @@ export default function Login() {
       console.error('Error signing in:', error);
       toast({
         title: 'Sign in failed',
-        description: error.message || 'Invalid username or password.',
+        description: error?.message || 'Could not sign in with email and password.',
         variant: 'destructive',
       });
     } finally {
@@ -110,22 +129,39 @@ export default function Login() {
     
     setIsSigningIn(true);
     try {
-      await apiRequest('POST', '/api/auth/register', { username, password });
-      const loginRes = await apiRequest('POST', '/api/auth/login', { username, password });
-      const loggedIn = await loginRes.json();
-      await refresh();
-      
-      // Create initial profile with name (sports/teams empty by default)
-      if (loggedIn?.id != null) {
-        await apiRequest('POST', '/api/profile', {
-          firebaseUid: String(loggedIn.id),
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          favoriteSports: [],
-          favoriteTeams: [],
-        });
+      const auth = getFirebaseAuth();
+      let firebaseUid: string | null = null;
+      if (!auth) {
+        // Dev override path: simulate account creation and use devUid
+        if (isDevHeaderAllowed()) {
+          const devUid = getDevUid() || username || 'dev-user';
+          firebaseUid = String(devUid);
+          try {
+            if (typeof window !== 'undefined') {
+              window.localStorage?.setItem?.('devUid', String(firebaseUid));
+            }
+          } catch {}
+        } else {
+          throw new Error('Firebase is not configured. Please set client env vars.');
+        }
+      } else {
+        const cred = await createUserWithEmailAndPassword(auth, username, password);
+        // Best-effort: set displayName to user's full name
+        try {
+          await updateProfile(cred.user, { displayName: `${firstName.trim()} ${lastName.trim()}` });
+        } catch {}
+        firebaseUid = cred.user.uid;
       }
-      
+      // Create initial profile in backend (favorites empty by default)
+      await apiRequest('POST', '/api/profile', {
+        firebaseUid: String(firebaseUid),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        favoriteSports: [],
+        favoriteTeams: [],
+      });
+
+      await refresh();
       toast({
         title: 'Account created!',
         description: 'Welcome to Corner League Media. You are now signed in.',
@@ -135,7 +171,7 @@ export default function Login() {
       console.error('Error signing up:', error);
       toast({
         title: 'Sign up failed',
-        description: error.message || 'Could not create account.',
+        description: error?.message || 'Could not create account.',
         variant: 'destructive',
       });
     } finally {

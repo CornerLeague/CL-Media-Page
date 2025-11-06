@@ -3,6 +3,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage } from "http";
 import { withSource } from "./logger";
 import { config } from "./config";
+import { metrics } from "./metrics";
 import { storage } from "./storage";
 import { 
   IncomingWebSocketMessage, 
@@ -100,30 +101,48 @@ async function authenticateWebSocketConnection(
     const url = new URL(request.url || '', `http://${request.headers.host}`);
     const token = url.searchParams.get('token');
     
-    // Dev fallback: Allow header override when running in dev and Firebase env missing
-    if (config.isDev && !hasFirebaseEnv()) {
-      const devUid = request.headers['x-dev-firebase-uid'] as string;
+    // Dev convenience: allow dev UID override only when explicitly enabled
+    if (config.isDev && config.allowDevHeader) {
+      // Try header first
+      let devUid = (request.headers['x-dev-firebase-uid'] as string) || '';
+
+      // If not in header, try cookie
       if (!devUid?.trim()) {
-        const authError = new AuthenticationError(
-          'WebSocket authentication failed: missing dev UID header',
-          { 
-            reason: 'missing_dev_uid',
-            environment: 'development',
-            requiredHeader: 'x-dev-firebase-uid'
-          }
-        );
-        
-        logError(wsLog, authError, {
-          operation: 'websocket_auth_dev_fallback',
-          reason: 'missing_dev_uid',
-          environment: 'development'
-        });
-        
-        healthMetrics.authFailures++;
-        return null;
+        const cookieHeader = request.headers['cookie'] || '';
+        try {
+          const cookies = Object.fromEntries(
+            cookieHeader
+              .split(';')
+              .map((c) => c.trim())
+              .filter(Boolean)
+              .map((c) => {
+                const eq = c.indexOf('=');
+                if (eq === -1) return [c, ''];
+                const name = c.slice(0, eq);
+                const value = decodeURIComponent(c.slice(eq + 1));
+                return [name, value];
+              })
+          );
+          devUid = (cookies['x-dev-firebase-uid'] as string) || (cookies['devUid'] as string) || '';
+        } catch {}
       }
-      wsLog.info({ uid: devUid }, 'WebSocket authenticated via dev fallback');
-      return devUid.trim();
+
+      // If still missing, try query param for convenience
+      if (!devUid?.trim()) {
+        devUid = url.searchParams.get('devUid') || '';
+      }
+
+      if (devUid?.trim()) {
+        // Add additional context to help diagnose dev auth path
+        try {
+          wsLog.info({ uid: devUid, url: request.url, headers: Object.keys(request.headers || {}) }, 'WebSocket authenticated via dev override');
+        } catch {}
+        // Mirror Firebase path: mark socket authenticated and set userId
+        socket.userId = devUid.trim();
+        socket.userEmail = undefined;
+        socket.isAuthenticated = true;
+        return devUid.trim();
+      }
     }
 
     if (!token?.trim()) {
@@ -409,6 +428,7 @@ function sendMessage(socket: AuthenticatedWebSocket, message: OutgoingWebSocketM
       // Track sent message
       socket.messagesSent = (socket.messagesSent || 0) + 1;
       healthMetrics.totalMessages++;
+      try { metrics.recordWsMessageSent(String(message.type)); } catch {}
     } catch (error) {
       const wsError = new WebSocketError(
         'Failed to send WebSocket message',
@@ -788,6 +808,7 @@ export function initWs(server: HttpServer) {
  */
 export function broadcastToUsers(message: OutgoingWebSocketMessage, targetUserIds?: string[]): void {
   if (!wss) return;
+  try { metrics.recordWsBroadcast('users', String(message.type)); } catch {}
   
   wss.clients.forEach((client) => {
     const authenticatedClient = client as AuthenticatedWebSocket;
@@ -818,6 +839,7 @@ export function broadcastToUsers(message: OutgoingWebSocketMessage, targetUserId
  */
 export function broadcastToTeamSubscribers(message: OutgoingWebSocketMessage, teamIds: string[]): void {
   if (!wss || teamIds.length === 0) return;
+  try { metrics.recordWsBroadcast('team_subscribers', String(message.type)); } catch {}
   
   wss.clients.forEach((client) => {
     const authenticatedClient = client as AuthenticatedWebSocket;
@@ -841,6 +863,7 @@ export function broadcastToTeamSubscribers(message: OutgoingWebSocketMessage, te
 
 export function broadcast(type: string, payload: any) {
   if (!wss) return;
+  try { metrics.recordWsBroadcast('generic', String(type)); } catch {}
   const msg = JSON.stringify({ type, payload });
   const targetTeams: string[] = Array.isArray(payload?.teamIds) ? payload.teamIds : [];
   
@@ -921,6 +944,7 @@ setInterval(() => {
  */
 export function broadcastUserTeamUpdate(gameData: any): void {
   if (!wss) return;
+  try { metrics.recordWsBroadcast('users', 'user-team-score-update'); } catch {}
   
   // Check if we should throttle this update
   if (!scoreThrottler.shouldSendUpdate(gameData.id)) {
@@ -990,6 +1014,7 @@ export function broadcastUserTeamStatusChange(
   newStatus: string
 ): void {
   if (!wss) return;
+  try { metrics.recordWsBroadcast('users', 'user-team-status-change'); } catch {}
   
   const timestamp = new Date().toISOString();
   

@@ -3,6 +3,7 @@ import { Bell, BellOff, Volume2, VolumeX, Wifi, WifiOff, Activity, Clock, Trendi
 import { Sport } from '../data/sportsTeams';
 import { useRealTimeScoreUpdates } from '../hooks/useRealTimeScoreUpdates';
 import { LoadingErrorBoundary, ConnectionStatusIndicator, ErrorDisplay } from './LoadingErrorBoundary';
+import { VirtualizedUpdatesList } from './VirtualizedUpdatesList';
 import type { RealTimeUpdateEvent } from '../hooks/useRealTimeScoreUpdates';
 
 /**
@@ -362,19 +363,13 @@ export const RealTimeUpdates: React.FC<RealTimeUpdatesProps> = memo(({
               )}
             </div>
             
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {displayedUpdates.length > 0 ? (
-                displayedUpdates.map((update, index) => (
-                  <UpdateHistoryItem key={`${update.gameId}-${update.timestamp}-${index}`} update={update} />
-                ))
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>No updates yet</p>
-                  <p className="text-sm">Updates will appear here when games are active</p>
-                </div>
-              )}
-            </div>
+            <VirtualizedUpdatesList
+              updates={displayedUpdates}
+              ItemComponent={UpdateHistoryItem}
+              height={384} // max-h-96 = 24rem = 384px
+              itemHeight={100}
+              className="space-y-3"
+            />
           </div>
         )}
       </div>

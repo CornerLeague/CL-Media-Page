@@ -1,7 +1,9 @@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Star, Users, Calendar, MapPin } from 'lucide-react';
-import { formatDistanceToNow, format } from 'date-fns';
+import formatDistanceToNow from 'date-fns/formatDistanceToNow';
+import format from 'date-fns/format';
+import { memo } from 'react';
 
 export interface FanExperience {
   type: 'watch_party' | 'tailgate' | 'viewing' | 'meetup';
@@ -17,7 +19,7 @@ interface ExperienceCardProps {
   onClick?: () => void;
 }
 
-export const ExperienceCard = ({ experience, onClick }: ExperienceCardProps) => {
+export const ExperienceCard = memo(({ experience, onClick }: ExperienceCardProps) => {
   const getTypeIcon = (type: FanExperience['type']) => {
     switch (type) {
       case 'watch_party':
@@ -160,4 +162,4 @@ export const ExperienceCard = ({ experience, onClick }: ExperienceCardProps) => 
       </div>
     </Card>
   );
-};
+});

@@ -2,8 +2,9 @@ import React from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { LoadingCard } from '@/components/ui/loading-states';
+import { ErrorCard, ConnectionError } from '@/components/ui/error-states';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -55,18 +56,12 @@ export const LoadingSkeleton: React.FC<{
   showHeader?: boolean;
   className?: string;
 }> = ({ lines = 3, showHeader = true, className = "" }) => (
-  <Card className={className}>
-    {showHeader && (
-      <CardHeader>
-        <Skeleton className="h-6 w-1/3" />
-      </CardHeader>
-    )}
-    <CardContent className="space-y-3">
-      {Array.from({ length: lines }).map((_, i) => (
-        <Skeleton key={i} className="h-4 w-full" />
-      ))}
-    </CardContent>
-  </Card>
+  <LoadingCard
+    title={showHeader ? "Loading..." : undefined}
+    description={`Loading ${lines} items...`}
+    showSpinner={true}
+    className={className}
+  />
 );
 
 export const ConnectionStatusIndicator: React.FC<{
@@ -144,27 +139,15 @@ export const ErrorDisplay: React.FC<{
     : error.error?.message || 'An unexpected error occurred';
 
   return (
-    <Alert variant="destructive" className={className}>
-      <AlertCircle className="h-4 w-4" />
-      <AlertTitle>Error</AlertTitle>
-      <AlertDescription className="mt-2">
-        <p>{errorMessage}</p>
-        {error.errorCode && (
-          <p className="text-xs mt-1 opacity-75">Code: {error.errorCode}</p>
-        )}
-        {onRetry && error.retryable !== false && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onRetry}
-            className="mt-3"
-          >
-            <RefreshCw className="w-3 h-3 mr-1" />
-            Try Again
-          </Button>
-        )}
-      </AlertDescription>
-    </Alert>
+    <ErrorCard
+      title="Error"
+      message={errorMessage}
+      variant="destructive"
+      showIcon={true}
+      onRetry={onRetry && error.retryable !== false ? onRetry : undefined}
+      retryLabel="Try Again"
+      className={className}
+    />
   );
 };
 

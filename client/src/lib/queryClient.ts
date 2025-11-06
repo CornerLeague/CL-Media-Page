@@ -34,6 +34,24 @@ export async function apiRequest(
   const token = getCsrfToken();
   if (needsCsrf && token) headers["X-CSRF-Token"] = token;
 
+  // Authorization: prefer Firebase Bearer tokens when dev override is disabled
+  try {
+    const { isDev, isDevHeaderAllowed, getDevUid } = await import('./devAuth');
+    const devMode = isDev();
+    const devOverride = isDevHeaderAllowed();
+    if (!devOverride) {
+      const { getFirebaseIdToken } = await import('./firebaseClient');
+      const idToken = await getFirebaseIdToken();
+      if (idToken) {
+        headers["Authorization"] = `Bearer ${idToken}`;
+      }
+    } else if (devMode && devOverride) {
+      // Dev-only auth fallback: include x-dev-firebase-uid when available
+      const devUid = getDevUid() || 'dev-user';
+      if (devUid) headers["x-dev-firebase-uid"] = String(devUid);
+    }
+  } catch {}
+
   // Execute request; if CSRF fails, refresh token and retry once
   const doFetch = async () =>
     fetch(url, {
@@ -44,6 +62,22 @@ export async function apiRequest(
     });
 
   let res = await doFetch();
+
+  // If unauthorized, try a one-time Firebase ID token refresh and retry
+  if (res.status === 401) {
+    try {
+      const { isDevHeaderAllowed } = await import('./devAuth');
+      const devOverride = isDevHeaderAllowed();
+      if (!devOverride) {
+        const { getFirebaseIdToken } = await import('./firebaseClient');
+        const refreshed = await getFirebaseIdToken(true);
+        if (refreshed) {
+          headers["Authorization"] = `Bearer ${refreshed}`;
+          res = await doFetch();
+        }
+      }
+    } catch {}
+  }
   if (needsCsrf && res.status === 403) {
     try {
       // Refresh CSRF token and retry once
@@ -68,9 +102,45 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    const headers: Record<string, string> = {};
+    try {
+      const { isDev, isDevHeaderAllowed, getDevUid } = await import('./devAuth');
+      const devOverride = isDevHeaderAllowed();
+      if (!devOverride) {
+        const { getFirebaseIdToken } = await import('./firebaseClient');
+        const idToken = await getFirebaseIdToken();
+        if (idToken) {
+          headers["Authorization"] = `Bearer ${idToken}`;
+        }
+      } else if (isDev() && devOverride) {
+        const devUid = getDevUid() || 'dev-user';
+        if (devUid) headers["x-dev-firebase-uid"] = String(devUid);
+      }
+    } catch {}
+
+    let res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
+      headers,
     });
+
+    // One-time retry on 401 with forced Firebase token refresh when dev override is disabled
+    if (res.status === 401) {
+      try {
+        const { isDevHeaderAllowed } = await import('./devAuth');
+        const devOverride = isDevHeaderAllowed();
+        if (!devOverride) {
+          const { getFirebaseIdToken } = await import('./firebaseClient');
+          const refreshed = await getFirebaseIdToken(true);
+          if (refreshed) {
+            headers["Authorization"] = `Bearer ${refreshed}`;
+            res = await fetch(queryKey.join("/") as string, {
+              credentials: "include",
+              headers,
+            });
+          }
+        }
+      } catch {}
+    }
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;

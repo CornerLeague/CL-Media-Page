@@ -1,6 +1,7 @@
 import { FanExperience, ExperienceCard } from './ExperienceCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Star } from 'lucide-react';
+import { memo, useCallback } from 'react';
 
 interface FanExperiencesSectionProps {
   experiences?: FanExperience[];
@@ -8,10 +9,10 @@ interface FanExperiencesSectionProps {
   error?: Error | null;
 }
 
-export const FanExperiencesSection = ({ experiences, isLoading, error }: FanExperiencesSectionProps) => {
-  const handleExperienceClick = (experience: FanExperience) => {
+export const FanExperiencesSection = memo(({ experiences, isLoading, error }: FanExperiencesSectionProps) => {
+  const handleExperienceClick = useCallback((experience: FanExperience) => {
     console.log('Experience clicked:', experience);
-  };
+  }, []);
 
   if (error) {
     return (
@@ -75,4 +76,4 @@ export const FanExperiencesSection = ({ experiences, isLoading, error }: FanExpe
       )}
     </section>
   );
-};
+});

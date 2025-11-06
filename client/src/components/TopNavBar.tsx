@@ -1,6 +1,6 @@
 import { useLocation } from 'wouter';
 import { ThemeToggle } from './ThemeToggle';
-import { User, LogOut, Settings, ArrowLeft } from 'lucide-react';
+import { User, LogOut, Settings, ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -24,11 +24,12 @@ import { useToast } from '@/hooks/use-toast';
 import type { Sport } from '@/data/sportsTeams';
 import { useQuery } from '@tanstack/react-query';
 import type { UserProfile } from '@shared/schema';
+import { WebSocketStatusCompact } from '@/components/WebSocketStatus';
 
 export const TopNavBar = () => {
   const [location, setLocation] = useLocation();
   const { user, signOut } = useAuth();
-  const { selectedSport, setSelectedSport, availableSports } = useSport();
+  const { selectedSport, setSelectedSport, availableSports, isTransitioning } = useSport();
   const { toast } = useToast();
 
   const { data: profile } = useQuery<UserProfile | null>({
@@ -93,12 +94,19 @@ export const TopNavBar = () => {
             </Button>
           ) : (
             showSportSelector && selectedSport && (
-              <Select value={selectedSport} onValueChange={handleSportChange}>
+              <Select value={selectedSport} onValueChange={handleSportChange} disabled={isTransitioning}>
                 <SelectTrigger 
                   className="w-auto h-auto border-0 bg-transparent p-0 gap-1 hover:bg-transparent focus:ring-0 focus:ring-offset-0 font-display font-bold text-base sm:text-lg text-foreground"
                   data-testid="select-sport-trigger"
                 >
-                  <SelectValue />
+                  {isTransitioning ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="opacity-70">Switching...</span>
+                    </div>
+                  ) : (
+                    <SelectValue />
+                  )}
                 </SelectTrigger>
                 <SelectContent data-testid="select-sport-content">
                   {availableSports.map((sport) => (
@@ -158,6 +166,8 @@ export const TopNavBar = () => {
                 <span className="sr-only">Profile</span>
               </Button>
             )}
+            {/* Global WebSocket connection status indicator */}
+            <WebSocketStatusCompact className="ml-1 sm:ml-2" />
             <ThemeToggle />
           </div>
         </div>

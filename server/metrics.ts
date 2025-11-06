@@ -32,6 +32,22 @@ const scoresAgentRunDurationMs = new Histogram({
   registers: [register],
 });
 
+// HTTP API request latency and totals
+const apiRequestLatencyMs = new Histogram({
+  name: 'api_request_latency_ms',
+  help: 'Latency of API requests in milliseconds',
+  labelNames: ['endpoint', 'method', 'status'],
+  buckets: LATENCY_BUCKETS,
+  registers: [register],
+});
+
+const apiRequestsTotal = new Counter({
+  name: 'api_requests_total',
+  help: 'Total API requests by endpoint, method, and status',
+  labelNames: ['endpoint', 'method', 'status'],
+  registers: [register],
+});
+
 // Use counters for hits/misses and expose hit rate via a gauge convenience
 const cacheHitsTotal = new Counter({
   name: 'cache_hits_total',
@@ -76,6 +92,21 @@ const jobFailuresTotal = new Counter({
   registers: [register],
 });
 
+// WebSocket metrics
+const wsMessagesSentTotal = new Counter({
+  name: 'ws_messages_sent_total',
+  help: 'Total WebSocket messages sent by type',
+  labelNames: ['type'],
+  registers: [register],
+});
+
+const wsBroadcastsTotal = new Counter({
+  name: 'ws_broadcasts_total',
+  help: 'Total WebSocket broadcast events by scope and type',
+  labelNames: ['scope', 'type'], // scope: users | team_subscribers | generic
+  registers: [register],
+});
+
 // Error monitoring metrics
 const userTeamScoresErrorsTotal = new Counter({
   name: 'user_team_scores_errors_total',
@@ -105,6 +136,14 @@ const alertsTriggeredTotal = new Counter({
   registers: [register],
 });
 
+// Rate limiting metrics
+const rateLimitHitsTotal = new Counter({
+  name: 'rate_limit_hits_total',
+  help: 'Total rate limit hits by endpoint and scope',
+  labelNames: ['endpoint', 'scope'], // scope: ip | user
+  registers: [register],
+});
+
 // Helpers
 function observeDbQuery(operation: string, table: string, durationMs: number, rows: number) {
   try {
@@ -124,6 +163,26 @@ function recordCacheEvent(group: string, hit: boolean) {
     const misses = (cacheMissesTotal as any).hashMap?.[`group:${group}`]?.value ?? 0;
     const rate = hits + misses > 0 ? hits / (hits + misses) : 0;
     cacheHitRate.labels(group).set(rate);
+  } catch { /* no-op */ }
+}
+
+function observeApiRequest(endpoint: string, method: string, status: number, durationMs: number) {
+  try {
+    const statusStr = String(status);
+    apiRequestLatencyMs.labels(endpoint, method, statusStr).observe(durationMs);
+    apiRequestsTotal.labels(endpoint, method, statusStr).inc();
+  } catch { /* no-op */ }
+}
+
+function recordWsMessageSent(type: string) {
+  try {
+    wsMessagesSentTotal.labels(type).inc();
+  } catch { /* no-op */ }
+}
+
+function recordWsBroadcast(scope: 'users' | 'team_subscribers' | 'generic', type: string) {
+  try {
+    wsBroadcastsTotal.labels(scope, type).inc();
   } catch { /* no-op */ }
 }
 
@@ -160,6 +219,12 @@ function recordAlert(alertType: string, severity: string) {
   });
 }
 
+function recordRateLimitHit(endpoint: string, scope: 'ip' | 'user') {
+  try {
+    rateLimitHitsTotal.labels(endpoint, scope).inc();
+  } catch { /* no-op */ }
+}
+
 async function getMetricsContent(): Promise<string> {
   return await register.metrics();
 }
@@ -169,20 +234,29 @@ export const metrics = {
   dbQueryLatencyMs,
   dbRowsReturned,
   scoresAgentRunDurationMs,
+  apiRequestLatencyMs,
+  apiRequestsTotal,
   cacheHitsTotal,
   cacheMissesTotal,
   cacheHitRate,
   validationErrorsTotal,
   jobExecutionDurationMs,
   jobFailuresTotal,
+  wsMessagesSentTotal,
+  wsBroadcastsTotal,
   userTeamScoresErrorsTotal,
   errorRatePerMinute,
   criticalErrorsTotal,
   alertsTriggeredTotal,
+  rateLimitHitsTotal,
   observeDbQuery,
   recordCacheEvent,
+  observeApiRequest,
+  recordWsMessageSent,
+  recordWsBroadcast,
   recordUserTeamScoresError,
   updateErrorRate,
   recordAlert,
+  recordRateLimitHit,
   getMetricsContent,
 } as const;
