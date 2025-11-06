@@ -24,14 +24,21 @@ Environment Setup
 
 Running in Development
 ----------------------
-- API/Server (Express):
-  npm run dev
-  This starts the server via tsx (default port from .env PORT or 5000).
+- Unified server (Express + Vite middleware, recommended):
+  PORT=5002 SESSION_SECRET=dev USE_MEM_STORAGE=true npm run dev
+  This boots the API and the client through the same Express process on port 5002. Visit
+  http://localhost:5002/login and leave this as the only dev server running to avoid HMR
+  or proxy conflicts.
 
-- Client (Vite dev server):
-  The Vite config sets the root to ./client. From the project root, you can run:
-  npx vite
-  This launches the client dev server. In production, the client is built into dist/public via npm run build.
+- Split mode (only if you intentionally need separate servers):
+  - API/Server (Express):
+      npm run dev
+    This starts the server via tsx (port comes from .env PORT or defaults to 5000).
+  - Client (Vite dev server):
+      npx vite
+    This launches the standalone Vite dev server rooted at ./client. Use this mode only
+    when you explicitly need separate ports and ensure the backend target matches the
+    proxy configuration.
 
 Build & Production
 ------------------
@@ -100,3 +107,8 @@ Common Issues
 
 - Postgres or Redis not running:
   The app can run without them in limited mode, but tests/integration and job queues may fail or be skipped.
+
+- `net::ERR_ABORTED` on module loads or `/api/auth/csrf` calls in development:
+  Ensure only one dev server is running. Stop stray Vite or Express processes and restart using the unified
+  command (`PORT=5002 SESSION_SECRET=dev USE_MEM_STORAGE=true npm run dev`). Conflicting servers or a crashed
+  backend proxy cause HMR pings (e.g. to port 24678) and API calls to abort mid-flight.
