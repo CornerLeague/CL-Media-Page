@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { isDev as isDevMode, isDevHeaderAllowed, getDevUid } from '@/lib/devAuth';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -213,6 +214,10 @@ const DEFAULT_OPTIONS: Required<Omit<WebSocketOptions, 'eventHandlers'>> = {
 export function useWebSocket(options: WebSocketOptions = {}): UseWebSocketReturn {
   const { user } = useAuth();
   const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
+  const isDev = isDevMode();
+  // Resolve devUid from multiple sources for smoother development auth fallback
+  const rawDevUid = getDevUid();
+  const effectiveDevUid = isDevHeaderAllowed() ? rawDevUid : null;
   
   // State management
   const [state, setState] = useState<WebSocketState>('disconnected');
@@ -355,9 +360,10 @@ export function useWebSocket(options: WebSocketOptions = {}): UseWebSocketReturn
    * Connect to WebSocket server
    */
   const connect = useCallback(() => {
-    // Don't connect if user is not authenticated
-    if (!user) {
-      console.warn('Cannot connect WebSocket: user not authenticated');
+    // In dev, allow connection when effectiveDevUid is present even if user is not set
+    const canConnect = !!user || (!!effectiveDevUid && isDev);
+    if (!canConnect) {
+      console.warn('Cannot connect WebSocket: user not authenticated and no devUid present');
       return;
     }
     
@@ -373,8 +379,18 @@ export function useWebSocket(options: WebSocketOptions = {}): UseWebSocketReturn
     try {
       // Determine WebSocket URL
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
-      
+      // In local/dev, pass devUid as query param for server dev auth fallback when allowed
+      let devUidParam = '';
+      const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+      if (effectiveDevUid && (isDev || isLocalHost) && isDevHeaderAllowed()) {
+        devUidParam = `?devUid=${encodeURIComponent(String(effectiveDevUid))}`;
+      }
+
+      const wsUrl = `${protocol}//${window.location.host}/ws${devUidParam}`;
+      if (!import.meta.env.PROD) {
+        console.log('[useWebSocket] Connecting to:', wsUrl);
+      }
+
       // Create new WebSocket connection
       wsRef.current = new WebSocket(wsUrl);
       
@@ -389,7 +405,7 @@ export function useWebSocket(options: WebSocketOptions = {}): UseWebSocketReturn
       setLastError(error as Event);
       console.error('Failed to create WebSocket connection:', error);
     }
-  }, [user, handleOpen, handleMessage, handleClose, handleError]);
+  }, [user, isDev, effectiveDevUid, handleOpen, handleMessage, handleClose, handleError]);
   
   /**
    * Disconnect from WebSocket server
@@ -453,16 +469,17 @@ export function useWebSocket(options: WebSocketOptions = {}): UseWebSocketReturn
     sendMessage({ type: 'unsubscribe-user-teams', sport });
   }, [sendMessage]);
   
-  // Auto-connect when user is authenticated and autoConnect is enabled
+  // Auto-connect when authenticated or in dev with devUid
   useEffect(() => {
-    if (user && mergedOptions.autoConnect) {
+    const shouldAutoConnect = mergedOptions.autoConnect && (user || (isDev && !!effectiveDevUid));
+    if (shouldAutoConnect) {
       connect();
     }
-    
+
     return () => {
       disconnect();
     };
-  }, [user, mergedOptions.autoConnect, connect, disconnect]);
+  }, [user, effectiveDevUid, isDev, mergedOptions.autoConnect, connect, disconnect]);
   
   // Cleanup on unmount
   useEffect(() => {
