@@ -367,6 +367,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Accept client-side error reports securely (no sensitive data persisted)
+  app.post("/api/monitoring/errors/report", async (req, res) => {
+    const logger = withSource('client-error-report');
+    try {
+      const body = req.body ?? {};
+      const rawError = body.error ?? {};
+      const metadata = body.metadata ?? {};
+
+      // Minimal validation
+      const message = typeof rawError.message === 'string' ? rawError.message : undefined;
+      if (!message) {
+        return res.status(400).json({ error: 'Invalid payload: missing error.message' });
+      }
+
+      // Reconstruct error with sanitized details
+      const reportedError = new Error(message);
+      if (typeof rawError.name === 'string' && rawError.name) {
+        reportedError.name = rawError.name;
+      }
+      try {
+        const stack = typeof rawError.stack === 'string' ? rawError.stack : undefined;
+        if (stack) {
+          // Limit stack depth to avoid excessive payloads
+          (reportedError as any).stack = stack.split('\n').slice(0, 10).join('\n');
+        }
+      } catch {}
+
+      // Log and track through existing monitoring system
+      const context = {
+        operation: 'client-error-report',
+        requestId: (res as any).locals?.requestId,
+        userAgent: typeof metadata.userAgent === 'string' ? metadata.userAgent : req.get('User-Agent'),
+        url: typeof metadata.url === 'string' ? metadata.url : undefined,
+        clientIP: req.ip,
+        sessionId: typeof metadata.sessionId === 'string' ? metadata.sessionId : undefined,
+        client: true,
+        errorId: typeof metadata.id === 'string' ? metadata.id : undefined,
+        // Pass through non-sensitive context if provided
+        ...(typeof metadata.context === 'object' && metadata.context ? { context: metadata.context } : {}),
+      } as Record<string, any>;
+
+      logError(logger, reportedError, context);
+
+      return res.status(202).json({ status: 'ok' });
+    } catch (error) {
+      return handleApiError(
+        error as Error,
+        res,
+        'post-client-error-report',
+        { endpoint: '/api/monitoring/errors/report' }
+      );
+    }
+  });
+
   // User team scores specific health check endpoint
   app.get("/api/monitoring/user-team-scores/health", async (_req, res) => {
     try {

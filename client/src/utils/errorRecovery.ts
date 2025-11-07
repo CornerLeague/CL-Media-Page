@@ -88,19 +88,40 @@ class ErrorLogger {
 
   private async sendToExternalService(errorLog: ErrorLog): Promise<void> {
     try {
-      // In a real application, you would send this to your error tracking service
-      // like Sentry, LogRocket, Bugsnag, etc.
-      
-      // For now, we'll just store it in localStorage as a fallback
-      const existingLogs = JSON.parse(localStorage.getItem('error_logs') || '[]');
-      existingLogs.push(errorLog);
-      
-      // Keep only the last 50 logs in localStorage
-      const recentLogs = existingLogs.slice(-50);
-      localStorage.setItem('error_logs', JSON.stringify(recentLogs));
-      
+      // Send to backend monitoring endpoint instead of storing in localStorage
+      const payload = {
+        error: {
+          name: errorLog.error.name,
+          message: errorLog.error.message,
+          // Limit stack size to avoid excessive payloads
+          stack: errorLog.error.stack
+            ? String(errorLog.error.stack).split('\n').slice(0, 10).join('\n')
+            : undefined,
+        },
+        // Do not include raw errorInfo to avoid leaking sensitive data
+        metadata: {
+          id: errorLog.id,
+          timestamp: errorLog.timestamp instanceof Date
+            ? errorLog.timestamp.toISOString()
+            : String(errorLog.timestamp),
+          userAgent: errorLog.userAgent,
+          url: errorLog.url,
+          sessionId: errorLog.sessionId,
+          // Include only non-sensitive context keys if present
+          context: errorLog.context,
+        },
+      };
+
+      await fetch('/api/monitoring/errors/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
     } catch (storageError) {
-      console.error('Failed to store error log:', storageError);
+      // Swallow reporting failure to avoid cascading errors
+      if (import.meta.env.DEV) {
+        console.error('Failed to report error log:', storageError);
+      }
     }
   }
 
@@ -114,7 +135,6 @@ class ErrorLogger {
 
   clearLogs(): void {
     this.logs = [];
-    localStorage.removeItem('error_logs');
   }
 }
 
