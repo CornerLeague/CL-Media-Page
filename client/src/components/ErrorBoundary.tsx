@@ -1,6 +1,7 @@
-import React, { Component, ReactNode, ErrorInfo } from 'react';
+import React, { Component, ReactNode, ErrorInfo as ReactErrorInfo } from 'react';
 import { ErrorDisplay } from './ErrorDisplay';
 import { logError } from '@/utils/errorRecovery';
+import { getSafeUserAgent, getSafeHref, reloadPage } from '@/utils/env';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -9,14 +10,14 @@ import { logError } from '@/utils/errorRecovery';
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
-  errorInfo: ErrorInfo | null;
+  errorInfo: ReactErrorInfo | null;
   errorId: string | null;
 }
 
 interface ErrorBoundaryProps {
   children: ReactNode;
   fallback?: ReactNode;
-  onError?: (error: Error, errorInfo: ErrorInfo) => void;
+  onError?: (error: Error, errorInfo: ReactErrorInfo) => void;
   resetOnPropsChange?: boolean;
   resetKeys?: Array<string | number>;
 }
@@ -47,15 +48,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ReactErrorInfo) {
     // Log the error
     const errorId = this.state.errorId || 'unknown';
     logError(error, {
       ...errorInfo,
       errorId,
       timestamp: new Date().toISOString(),
-      userAgent: navigator.userAgent,
-      url: window.location.href,
+      userAgent: getSafeUserAgent(),
+      url: getSafeHref(),
     });
 
     this.setState({
@@ -113,7 +114,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   };
 
   handleReload = () => {
-    window.location.reload();
+    reloadPage();
   };
 
   render() {
@@ -127,10 +128,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
 
       // Default error display
+      const displayErrorInfo = errorInfo
+        ? { componentStack: errorInfo.componentStack ?? undefined }
+        : undefined;
       return (
         <ErrorDisplay
           error={error}
-          errorInfo={errorInfo}
+          errorInfo={displayErrorInfo}
           errorId={errorId}
           onRetry={this.handleRetry}
           onReload={this.handleReload}

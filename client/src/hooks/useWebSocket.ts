@@ -360,6 +360,15 @@ export function useWebSocket(options: WebSocketOptions = {}): UseWebSocketReturn
    * Connect to WebSocket server
    */
   const connect = useCallback(() => {
+    // Ensure browser environment before accessing window or WebSocket
+    if (typeof window === 'undefined') {
+      console.warn('WebSocket connect skipped: non-browser environment');
+      return;
+    }
+    if (typeof WebSocket === 'undefined') {
+      console.warn('WebSocket API not available in this environment');
+      return;
+    }
     // In dev, allow connection when effectiveDevUid is present even if user is not set
     const canConnect = !!user || (!!effectiveDevUid && isDev);
     if (!canConnect) {

@@ -1,4 +1,5 @@
 import { ErrorState } from '@/components/ErrorDisplay';
+import { getSafeUserAgent, getSafeHref, isOnline, reloadPage } from '@/utils/env';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -56,8 +57,8 @@ class ErrorLogger {
         stack: error.stack,
       } as Error,
       errorInfo,
-      userAgent: navigator.userAgent,
-      url: window.location.href,
+      userAgent: getSafeUserAgent(),
+      url: getSafeHref(),
       sessionId: this.sessionId,
       context,
     };
@@ -78,10 +79,13 @@ class ErrorLogger {
       console.groupEnd();
     }
 
-    // Send to external service in production
-    if (import.meta.env.PROD) {
-      this.sendToExternalService(errorLog).catch(console.error);
-    }
+    // Always send to external monitoring service. No localStorage fallback.
+    this.sendToExternalService(errorLog).catch(err => {
+      // Swallow reporting failure to avoid cascading errors
+      if (import.meta.env.DEV) {
+        console.error('Failed to report error log:', err);
+      }
+    });
 
     return errorId;
   }
@@ -159,7 +163,7 @@ const recoveryStrategies: RecoveryStrategy[] = [
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Check if we're back online
-      if (!navigator.onLine) {
+      if (!isOnline()) {
         return false;
       }
       
@@ -187,7 +191,7 @@ const recoveryStrategies: RecoveryStrategy[] = [
     },
     recover: async () => {
       // For chunk loading errors, the best recovery is to reload the page
-      window.location.reload();
+      reloadPage();
       return true;
     }
   },

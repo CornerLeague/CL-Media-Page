@@ -100,16 +100,28 @@ export class ErrorMonitoring {
   private errorHistory: ErrorMetrics[] = [];
   private alertHistory: AlertInfo[] = [];
   private lastCleanup: number = Date.now();
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   
   constructor(config: Partial<ErrorMonitoringConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     
     // Start cleanup interval
-    setInterval(() => this.cleanup(), 10 * 60 * 1000); // Every 10 minutes
+    this.cleanupInterval = setInterval(() => this.cleanup(), 10 * 60 * 1000); // Every 10 minutes
     
     monitoringLog.info({
       config: this.config
     }, 'Error monitoring system initialized');
+  }
+
+  /**
+   * Cleanly stop monitoring and free resources
+   */
+  public destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    monitoringLog.info({}, 'Error monitoring system destroyed');
   }
 
   /**

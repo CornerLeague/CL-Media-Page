@@ -127,6 +127,7 @@ export class SmartUpdateTriggeringService {
   private processingQueue: Set<string> = new Set();
   private throttleTimers: Map<string, NodeJS.Timeout> = new Map();
   private batchTimer: NodeJS.Timeout | null = null;
+  private activityInterval: ReturnType<typeof setInterval> | null = null;
   private userActivity: UserActivityState;
   private metrics: PerformanceMetrics;
   private dependencyGraph: Map<string, Set<string>> = new Map();
@@ -276,6 +277,11 @@ export class SmartUpdateTriggeringService {
     if (this.batchTimer) {
       clearTimeout(this.batchTimer);
       this.batchTimer = null;
+    }
+
+    if (this.activityInterval) {
+      clearInterval(this.activityInterval);
+      this.activityInterval = null;
     }
 
     // Clear queues
@@ -455,10 +461,12 @@ export class SmartUpdateTriggeringService {
   private throttleUpdate(request: UpdateRequest): void {
     const throttleKey = `${request.type}-${request.priority}`;
     
-    if (this.throttleTimers.has(throttleKey)) {
-      // Update existing throttled request
-      this.throttleTimers.get(throttleKey)!;
-      return;
+    // If a throttle timer already exists for this key, reset it to ensure
+    // the latest request is scheduled and not lost.
+    const existingTimer = this.throttleTimers.get(throttleKey);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      this.throttleTimers.delete(throttleKey);
     }
 
     const interval = this.getAdaptiveThrottleInterval(request);
@@ -607,7 +615,7 @@ export class SmartUpdateTriggeringService {
     });
 
     // Periodic activity level update
-    setInterval(() => {
+    this.activityInterval = setInterval(() => {
       this.updateActivityLevel();
     }, 5000);
   }

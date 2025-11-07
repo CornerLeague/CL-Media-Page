@@ -63,6 +63,9 @@ export const useScrollPosition = (options: ScrollPositionOptions = {}): ScrollPo
 
   // Get current scroll position
   const getCurrentScrollPosition = useCallback((): number => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return 0;
+    }
     return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
   }, []);
 
@@ -74,7 +77,9 @@ export const useScrollPosition = (options: ScrollPositionOptions = {}): ScrollPo
     
     if (storageKey) {
       try {
-        sessionStorage.setItem(storageKey, position.toString());
+        if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem(storageKey, position.toString());
+        }
       } catch (error) {
         console.warn('Failed to save scroll position to sessionStorage:', error);
       }
@@ -89,24 +94,29 @@ export const useScrollPosition = (options: ScrollPositionOptions = {}): ScrollPo
     
     if (targetPosition > 0) {
       setTimeout(() => {
-        window.scrollTo({
-          top: targetPosition,
-          behavior: scrollBehavior
-        });
+        if (typeof window !== 'undefined') {
+          window.scrollTo({
+            top: targetPosition,
+            behavior: scrollBehavior
+          });
+        }
       }, restoreDelay);
     }
   }, [scrollBehavior, restoreDelay]);
 
   // Scroll to top
   const scrollToTop = useCallback(() => {
-    window.scrollTo({
-      top: 0,
-      behavior: scrollBehavior
-    });
+    if (typeof window !== 'undefined') {
+      window.scrollTo({
+        top: 0,
+        behavior: scrollBehavior
+      });
+    }
   }, [scrollBehavior]);
 
   // Update current position on scroll
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const handleScroll = () => {
       currentPosition.current = getCurrentScrollPosition();
     };
@@ -126,6 +136,7 @@ export const useScrollPosition = (options: ScrollPositionOptions = {}): ScrollPo
 
   // Restore on mount if enabled
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     if (restoreOnMount && storageKey) {
       try {
         const saved = sessionStorage.getItem(storageKey);

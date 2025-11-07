@@ -11,7 +11,6 @@ export interface SportScoreCache {
   [sport: string]: {
     data: UserTeamScoresResult;
     lastUpdated: Date;
-    isStale: boolean;
     isRefreshing: boolean;
   };
 }
@@ -109,8 +108,12 @@ export function useSportScoreCache(
   // Check if sport data is cached and fresh
   const isCached = useCallback((sport: Sport): boolean => {
     const cached = cache[sport];
-    return cached && !cached.isStale;
-  }, [cache]);
+    if (!cached) return false;
+
+    const now = Date.now();
+    const age = now - cached.lastUpdated.getTime();
+    return age <= staleTime;
+  }, [cache, staleTime]);
 
   // Check if sport data is stale
   const isStale = useCallback((sport: Sport): boolean => {
@@ -157,7 +160,6 @@ export function useSportScoreCache(
         [sport]: {
           data: freshData,
           lastUpdated: new Date(),
-          isStale: false,
           isRefreshing: false,
         },
       }));
@@ -166,7 +168,7 @@ export function useSportScoreCache(
     } catch (error) {
       log(`Failed to refresh data for sport: ${sport}`, error);
       
-      // Mark as not refreshing but keep stale flag
+      // Mark as not refreshing; staleness is computed from lastUpdated
       setCache(prev => ({
         ...prev,
         [sport]: {
@@ -221,7 +223,6 @@ export function useSportScoreCache(
         [activeSport]: {
           data: queryData,
           lastUpdated: new Date(),
-          isStale: false,
           isRefreshing: false,
         },
       }));
@@ -303,35 +304,7 @@ export function useSportScoreCache(
   ]);
 
   // Mark cached data as stale based on staleTime
-  useEffect(() => {
-    const checkStaleData = () => {
-      const now = Date.now();
-      let hasStaleData = false;
-
-      setCache(prev => {
-        const newCache = { ...prev };
-        
-        Object.keys(newCache).forEach(sport => {
-          const age = now - newCache[sport].lastUpdated.getTime();
-          if (age > staleTime && !newCache[sport].isStale) {
-            newCache[sport] = { ...newCache[sport], isStale: true };
-            hasStaleData = true;
-          }
-        });
-
-        return newCache;
-      });
-
-      if (hasStaleData) {
-        log('Marked stale data in cache');
-      }
-    };
-
-    // Check for stale data every minute
-    const staleCheckInterval = setInterval(checkStaleData, 60 * 1000);
-
-    return () => clearInterval(staleCheckInterval);
-  }, [staleTime, log]);
+  // Removed: explicit stale flag management to avoid inconsistency.
 
   return {
     cache,

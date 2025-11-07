@@ -19,7 +19,15 @@ try {
   }
 } catch {}
 
-createRoot(document.getElementById("root")!).render(<App />);
+// Guard against missing root element to avoid runtime crash
+const container = typeof document !== "undefined" ? document.getElementById("root") : null;
+if (container) {
+  const root = createRoot(container);
+  root.render(<App />);
+} else {
+  // Provide a clear diagnostic message in development or unexpected environments
+  console.error("[bootstrap] Root element with id 'root' not found. Skipping React render.");
+}
 
 if (import.meta.hot) {
   console.log("Vite HMR is active");

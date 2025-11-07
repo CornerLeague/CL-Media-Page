@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { fetchCsrf } from '@/lib/csrf';
 import { getFirebaseAuth } from '@/lib/firebaseClient';
+import { isBrowser } from '@/utils/env';
 import { isDevHeaderAllowed, getDevUid } from '@/lib/devAuth';
 
 interface AuthUser {
@@ -104,7 +105,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           window.localStorage?.removeItem?.('devUid');
         }
       } catch {}
-      window.location.href = '/login';
+      if (isBrowser) {
+        window.location.href = '/login';
+      }
     } catch (error) {
       console.error('Error signing out:', error);
       throw error;

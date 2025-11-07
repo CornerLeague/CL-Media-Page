@@ -23,8 +23,14 @@ export class SportAdapterFactory {
    * 
    * @param sport - Sport name (case-insensitive): NBA, NFL, MLB, NHL, SOCCER, COLLEGE_FOOTBALL, COLLEGE_BASKETBALL
    * @returns IScoreSource adapter instance
-   */
+  */
   static getAdapter(sport: string): IScoreSource {
+    // Defensive: handle null/undefined/empty sport to avoid TypeError
+    if (sport == null || String(sport).trim() === '') {
+      logger.warn('SportAdapterFactory: getAdapter called with null/empty sport, using DummyScoreSource');
+      return new DummyScoreSource();
+    }
+
     const normalizedSport = sport.toUpperCase().trim();
     
     logger.info({ sport: normalizedSport }, 'SportAdapterFactory: Getting adapter');
@@ -90,8 +96,11 @@ export class SportAdapterFactory {
    * 
    * @param sport - Sport name to check (case-insensitive)
    * @returns true if the sport is in the supported list
-   */
-  static isSupported(sport: string): boolean {
+  */
+  static isSupported(sport?: string | null): boolean {
+    if (sport == null || String(sport).trim() === '') {
+      return false;
+    }
     const normalizedSport = sport.toUpperCase().trim();
     
     // Handle aliases
@@ -119,7 +128,18 @@ export class SportAdapterFactory {
   static getAdapters(sports: string[]): Map<string, IScoreSource> {
     const adapters = new Map<string, IScoreSource>();
     
+    // Defensive: handle non-array input to prevent runtime TypeError
+    if (!Array.isArray(sports)) {
+      logger.warn('SportAdapterFactory: getAdapters received non-array sports; returning empty map');
+      return adapters;
+    }
+    
     for (const sport of sports) {
+      // Defensive: skip null/undefined/empty entries to avoid TypeError
+      if (sport == null || String(sport).trim() === '') {
+        logger.warn('SportAdapterFactory: getAdapters received null/empty sport; skipping');
+        continue;
+      }
       const normalizedSport = sport.toUpperCase().trim();
       adapters.set(normalizedSport, this.getAdapter(sport));
     }

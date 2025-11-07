@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { errorRecoveryManager, handleErrorWithRecovery, logError } from '@/utils/errorRecovery';
+import { getSafeHref, getSafeUserAgent, isBrowser } from '@/utils/env';
 import { ErrorState } from '@/components/ErrorDisplay';
 
 // ============================================================================
@@ -272,23 +273,29 @@ export const useErrorHandler = (options: UseErrorHandlerOptions = {}): UseErrorH
       stack: errorToReport.stack,
       errorId: state.errorId,
       timestamp: new Date().toISOString(),
-      url: window.location.href,
-      userAgent: navigator.userAgent,
+      url: getSafeHref(),
+      userAgent: getSafeUserAgent(),
     };
 
     // For now, copy to clipboard and show alert
     const reportText = `Error Report:\n${JSON.stringify(errorDetails, null, 2)}`;
     
-    if (navigator.clipboard) {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(reportText).then(() => {
-        alert('Error details copied to clipboard. Please paste this in your bug report.');
+        if (isBrowser) {
+          alert('Error details copied to clipboard. Please paste this in your bug report.');
+        }
       }).catch(() => {
         console.log('Error Report:', reportText);
-        alert('Error details logged to console. Please copy from there.');
+        if (isBrowser) {
+          alert('Error details logged to console. Please copy from there.');
+        }
       });
     } else {
       console.log('Error Report:', reportText);
-      alert('Error details logged to console. Please copy from there.');
+      if (isBrowser) {
+        alert('Error details logged to console. Please copy from there.');
+      }
     }
   }, [state.error, state.errorId]);
 

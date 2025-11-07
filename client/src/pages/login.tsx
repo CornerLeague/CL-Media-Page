@@ -18,6 +18,9 @@ export default function Login() {
   const { toast } = useToast();
   // Derive initial auth tab from URL (?tab=signup|signin)
   const initialTab = (() => {
+    if (typeof window === 'undefined') {
+      return 'signin';
+    }
     try {
       const sp = new URLSearchParams(window.location.search);
       const t = sp.get('tab');
@@ -38,6 +41,7 @@ export default function Login() {
 
   // Sync selected tab with current URL query param to avoid timing flakiness
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
       const sp = new URLSearchParams(window.location.search);
       const t = sp.get('tab');

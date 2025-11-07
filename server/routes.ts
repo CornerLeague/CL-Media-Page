@@ -102,6 +102,8 @@ function handleApiError(
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Concurrency guard to prevent overlapping refreshes per sport
+  const refreshInFlight = new Set<string>();
   // Basic rate limits for auth endpoints with custom error handling
   const authLimiter = rateLimit({ 
     windowMs: 60 * 1000, 
@@ -1408,6 +1410,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? req.access!.authorizedTeamIds
           : [];
 
+        // Prevent concurrent refreshes for the same sport
+        const sportKey = (sport ?? "NBA").toUpperCase();
+        if (refreshInFlight.has(sportKey)) {
+          const error = new RateLimitError('Refresh already in progress for sport', {
+            sport: sportKey,
+            endpoint: '/api/scores/refresh',
+            concurrencyGuard: true,
+          });
+          throw error;
+        }
+        refreshInFlight.add(sportKey);
+
         // Select adapter based on sport (fallback handled internally)
         const adapter = SportAdapterFactory.getAdapter(sport ?? "NBA");
         const agent = new ScoresAgent(adapter);
@@ -1453,6 +1467,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             clientIP: req.ip,
           }
         );
+      } finally {
+        // Clear concurrency guard for this sport
+        const sportKey = ((req.access?.sport ?? req.validated?.query?.sport) ?? "NBA").toUpperCase();
+        refreshInFlight.delete(sportKey);
       }
     }
   );
