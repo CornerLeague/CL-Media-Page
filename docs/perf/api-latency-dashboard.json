@@ -1,0 +1,106 @@
+{
+  "title": "API Latency & Volume",
+  "uid": "api-latency-volume",
+  "timezone": "browser",
+  "version": 1,
+  "schemaVersion": 38,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "refresh": 1,
+        "hide": 0,
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      },
+      {
+        "name": "endpoint",
+        "type": "query",
+        "datasource": "${datasource}",
+        "query": "label_values(api_requests_total, endpoint)",
+        "refresh": 1,
+        "hide": 0,
+        "current": { "text": "/api/user-team-scores", "value": "/api/user-team-scores" }
+      },
+      {
+        "name": "method",
+        "type": "query",
+        "datasource": "${datasource}",
+        "query": "label_values(api_requests_total{endpoint=\"$endpoint\"}, method)",
+        "refresh": 1,
+        "hide": 0,
+        "current": { "text": "GET", "value": "GET" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Current p95 Latency",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "datasource": "${datasource}",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }, "orientation": "horizontal", "textMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "ms", "decimals": 0 } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(api_request_latency_ms_bucket{endpoint=\"$endpoint\", method=\"$method\"}[5m])))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency Quantiles (p50/p95/p99)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 6 },
+      "datasource": "${datasource}",
+      "fieldConfig": { "defaults": { "unit": "ms", "decimals": 0 } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(api_request_latency_ms_bucket{endpoint=\"$endpoint\", method=\"$method\"}[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(api_request_latency_ms_bucket{endpoint=\"$endpoint\", method=\"$method\"}[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(api_request_latency_ms_bucket{endpoint=\"$endpoint\", method=\"$method\"}[5m])))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Request Rate by Status",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "datasource": "${datasource}",
+      "fieldConfig": { "defaults": { "unit": "req/s", "decimals": 2 } },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(api_requests_total{endpoint=\"$endpoint\", method=\"$method\"}[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "heatmap",
+      "title": "Latency Distribution (Buckets)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 26 },
+      "datasource": "${datasource}",
+      "options": { "legend": { "show": true } },
+      "targets": [
+        {
+          "expr": "sum by (le) (rate(api_request_latency_ms_bucket{endpoint=\"$endpoint\", method=\"$method\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    }
+  ]
+}

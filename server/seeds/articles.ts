@@ -10,6 +10,7 @@
 
 import { storage } from '../storage';
 import { logger } from '../logger';
+import type { InsertArticleClassification } from '@shared/schema';
 
 export async function seedArticles() {
   logger.info('🌱 Seeding articles data...');
@@ -29,7 +30,9 @@ export async function seedArticles() {
     // ===== Seed News Sources =====
     logger.info('Creating news sources...');
 
-    const espnSource = await storage.createNewsSource({
+    // Idempotent creation: reuse existing by name if present
+    const existingEspn = await storage.getNewsSourceByName('ESPN');
+    const espnSource = existingEspn ?? await storage.createNewsSource({
       name: 'ESPN',
       domain: 'espn.com',
       sourceType: 'rss',
@@ -41,7 +44,8 @@ export async function seedArticles() {
       requestsPerMinute: 10,
     });
 
-    const athleticSource = await storage.createNewsSource({
+    const existingAthletic = await storage.getNewsSourceByName('The Athletic');
+    const athleticSource = existingAthletic ?? await storage.createNewsSource({
       name: 'The Athletic',
       domain: 'theathletic.com',
       sourceType: 'scraper',
@@ -53,7 +57,8 @@ export async function seedArticles() {
       requestsPerMinute: 5,
     });
 
-    const bleacherSource = await storage.createNewsSource({
+    const existingBleacher = await storage.getNewsSourceByName('Bleacher Report');
+    const bleacherSource = existingBleacher ?? await storage.createNewsSource({
       name: 'Bleacher Report',
       domain: 'bleacherreport.com',
       sourceType: 'rss',
@@ -65,12 +70,20 @@ export async function seedArticles() {
       requestsPerMinute: 15,
     });
 
-    logger.info(`✓ Created ${3} news sources`);
+    logger.info(`✓ Created or reused ${3} news sources`);
 
     // ===== Seed Articles =====
     logger.info('Creating sample articles...');
 
-    const articleTemplates = [
+    type ArticleTemplate = {
+      titleTemplate: string;
+      contentTemplate: string;
+      category: string;
+      confidence: number;
+      keywords: string[];
+    };
+
+    const articleTemplates: ArticleTemplate[] = [
       // Injury articles
       {
         titleTemplate: '{player} out with {injury} injury',
@@ -156,15 +169,17 @@ export async function seedArticles() {
           isDeleted: false,
         });
 
-        // Create classification
-        await storage.createArticleClassification({
+        // Create classification (explicitly typed to satisfy TS)
+        const classification: InsertArticleClassification = {
           articleId: article.id,
           category: template.category,
           confidence: template.confidence,
           classifierVersion: 'v1.0-seed',
           reasoning: `Classified as ${template.category} based on content analysis`,
-          keywords: template.keywords,
-        });
+          // Note: omit keywords here to satisfy type constraints in insert schema
+        };
+
+        await storage.createArticleClassification(classification);
 
         articleCount++;
       }

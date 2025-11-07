@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Build project
+        run: npm run build
+
+      - name: Start server (background)
+        run: |
+          PORT=5060 USE_MEM_STORAGE=true JOBS_ENABLED=false npm start &
+          echo $! > server.pid
+      
+      - name: Wait for server to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -sSf http://localhost:5060/api/auth/csrf > /dev/null; then
+              echo "Server is up"; break;
+            fi
+            sleep 2
+          done
+
+      - name: Run backend tests with coverage
+        run: npm run test:coverage
+
+      - name: Run frontend tests with coverage
+        run: npm run test:client:coverage
+
+      - name: Run Playwright E2E and UI smoke
+        env:
+          BASE_URL: http://localhost:5060
+        run: npm run test:playwright -- --reporter=list
+
+      - name: Performance smoke check
+        env:
+          BASE_URL: http://localhost:5060
+          RUNS: 5
+          TIMEOUT_MS: 8000
+          P95_THRESHOLD: 1200
+          MAX_ERRORS: 0
+        run: npm run bench:smoke
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage
+            client/coverage
+
+      - name: Upload benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: http-benchmarks
+          path: tmp/http_benchmarks.json
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then kill $(cat server.pid) || true; fi
